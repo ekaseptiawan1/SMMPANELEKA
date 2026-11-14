@@ -96,7 +96,7 @@ $('#toggle-register-password').addEventListener('click',()=>{
 });
 $('#login').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/login',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Berhasil login')}catch(x){toast(x.message)}});
 $('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/register',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await api('/auth/logout',{method:'POST'});e.target.reset();currentUser=null;location.hash='login';renderAuthRoute();toast('Registrasi berhasil. Silakan login dengan akun baru.')}catch(x){toast(x.message)}});
-$('#logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.reload()});
+
 $('#logout-admin').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(x){toast(x.message)}});
 $('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh();showMemberPage('deposit-page')}catch(x){toast(x.message)}});
 $('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const d=await api('/orders',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});toast(`Order #${d.order_id} tercatat · ${money(d.charge)}`);await refresh()}catch(x){toast(x.message)}});
