@@ -27,3 +27,12 @@ body.authenticated #akun{padding-top:28px}
 body.authenticated.admin-view #akun{display:none}
 body.authenticated #admin{padding-top:28px}
 body.authenticated #nav-user{display:inline-block;color:var(--muted);font-size:13px}
+
+
+/* Navigasi halaman khusus member */
+.member-tabs{display:flex;gap:9px;flex-wrap:wrap;margin:18px 0 16px}
+.member-tabs .member-tab{background:#121e31;border:1px solid #293a55;color:#c8d5ea}
+.member-tabs .member-tab.active{background:#718cff;border-color:#718cff;color:#fff}
+.member-page{margin:14px 0 24px}
+.member-page>.panel,.member-page>form.panel{max-width:760px}
+.member-page .table-wrap{margin-top:12px}
