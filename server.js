@@ -65,8 +65,10 @@ app.get('/api/services', async (req,res) => {
   const { rows } = await pool.query('SELECT id,platform,name,description,rate,min_qty,max_qty FROM services WHERE active=true ORDER BY platform,name');
   res.json({ services: rows });
 });
-app.get('/api/payment-info', (req,res) => {
-  res.json({ bank: 'SEA BANK', account_name: process.env.SEA_BANK_ACCOUNT_NAME || 'ISI NAMA PEMILIK REKENING', account_number: process.env.SEA_BANK_ACCOUNT_NUMBER || 'ISI NOMOR REKENING', instructions: 'Transfer sesuai nominal, lalu isi nomor referensi/keterangan transfer. Setelah mengirim permintaan, lanjutkan ke WhatsApp admin. Saldo masuk setelah admin memeriksa dan menyetujui.', whatsapp_configured: /^[0-9]{8,15}$/.test(process.env.ADMIN_WHATSAPP_NUMBER || '') });
+app.get('/api/payment-info', async (req,res) => {
+  const { rows } = await pool.query("SELECT key,value FROM app_settings WHERE key = ANY($1)", [['sea_bank_account_name','sea_bank_account_number','admin_whatsapp_number']]);
+  const settings = Object.fromEntries(rows.map(x => [x.key,x.value]));
+  res.json({ bank: 'SEA BANK', account_name: settings.sea_bank_account_name || 'Rekening belum diatur admin', account_number: settings.sea_bank_account_number || 'Belum diatur', instructions: 'Transfer sesuai nominal, lalu isi nomor referensi/keterangan transfer. Setelah mengirim permintaan, lanjutkan ke WhatsApp admin. Saldo masuk setelah admin memeriksa dan menyetujui.', whatsapp_configured: /^[0-9]{8,15}$/.test(settings.admin_whatsapp_number || '') });
 });
 app.post('/api/deposits', requireAuth, async (req,res) => {
   const amount = Number(req.body.amount);
@@ -76,7 +78,8 @@ app.post('/api/deposits', requireAuth, async (req,res) => {
   try {
     const { rows } = await pool.query("INSERT INTO deposits(user_id,amount,payment_method,proof_reference,payment_ref) VALUES($1,$2,'bank_transfer',$3,$4) RETURNING id,amount,status,created_at", [req.session.user.id, amount, proof, `SEA-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`]);
     const deposit = rows[0];
-    const waNumber = String(process.env.ADMIN_WHATSAPP_NUMBER || '').replace(/\D/g, '');
+    const cfg = await pool.query("SELECT value FROM app_settings WHERE key='admin_whatsapp_number'");
+    const waNumber = String(cfg.rows[0]?.value || '').replace(/\D/g, '');
     let whatsapp_url = null;
     if (/^[0-9]{8,15}$/.test(waNumber)) {
       const message = [
@@ -157,6 +160,31 @@ app.get('/api/member/summary', requireAuth, async (req,res) => {
     pool.query('SELECT type,amount,balance_after,reference,note,created_at FROM wallet_transactions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30',[id])
   ]);
   res.json({ orders: orders.rows, deposits: deposits.rows, transactions: tx.rows });
+});
+app.get('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
+  const { rows } = await pool.query("SELECT key,value FROM app_settings WHERE key = ANY($1)", [['sea_bank_account_name','sea_bank_account_number','admin_whatsapp_number']]);
+  res.json({ settings: Object.fromEntries(rows.map(x => [x.key,x.value])) });
+});
+app.put('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
+  const fields = { sea_bank_account_name: String(req.body.sea_bank_account_name || '').trim(), sea_bank_account_number: String(req.body.sea_bank_account_number || '').replace(/\\s/g,''), admin_whatsapp_number: String(req.body.admin_whatsapp_number || '').replace(/\\D/g,'') };
+  if (fields.sea_bank_account_name.length > 120 || fields.sea_bank_account_number.length > 40 || (fields.admin_whatsapp_number && !/^[0-9]{8,15}$/.test(fields.admin_whatsapp_number))) return res.status(400).json({ error: 'Data rekening atau nomor WhatsApp tidak valid.' });
+  for (const [key,value] of Object.entries(fields)) await pool.query('INSERT INTO app_settings(key,value,updated_at) VALUES($1,$2,NOW()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()', [key,value]);
+  await audit(req.session.user.id,'settings_updated',{ keys:Object.keys(fields) });
+  res.json({ ok:true });
+});
+app.put('/api/admin/account', requireAuth, requireAdmin, async (req,res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = req.body.password;
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(400).json({ error: 'Email admin tidak valid.' });
+  if (password && (typeof password !== 'string' || password.length < 12)) return res.status(400).json({ error: 'Password baru minimal 12 karakter.' });
+  try {
+    const hash = password ? await bcrypt.hash(password,12) : null;
+    const { rows } = await pool.query('UPDATE users SET email=$1,password_hash=COALESCE($2,password_hash) WHERE id=$3 AND role=\'admin\' RETURNING id,name,email,role,balance', [email,hash,req.session.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Akun admin tidak ditemukan.' });
+    req.session.user = publicUser(rows[0]);
+    await audit(rows[0].id,'admin_account_updated',{ email_changed:true,password_changed:Boolean(password) });
+    res.json({ ok:true,user:req.session.user });
+  } catch(e) { res.status(e.code === '23505' ? 409 : 500).json({ error: e.code === '23505' ? 'Email sudah digunakan.' : 'Gagal memperbarui akun admin.' }); }
 });
 app.get('/api/admin/overview', requireAuth, requireAdmin, async (req,res) => {
   const [users,orders,deposits,revenue] = await Promise.all([
@@ -256,13 +284,6 @@ app.post('/api/admin/orders/:id/refresh', requireAuth, requireAdmin, async (req,
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-// Create initial admin once. Existing admin accounts are never overwritten.
-async function bootstrapAdmin() {
-  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) return;
-  const found = await pool.query("SELECT id FROM users WHERE role='admin' LIMIT 1");
-  if (found.rowCount) return;
-  const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD,12);
-  await pool.query("INSERT INTO users(name,email,password_hash,role) VALUES('Administrator',lower($1),$2,'admin') ON CONFLICT(email) DO NOTHING",[process.env.ADMIN_EMAIL,hash]);
-}
+// Admin accounts are created with the private CLI command; no admin credentials live in environment variables.
 const port = Number(process.env.PORT || 3000);
-bootstrapAdmin().then(() => app.listen(port, () => console.log(`BoostPanel berjalan di http://localhost:${port}`))).catch(err => { console.error('Bootstrap gagal:',err); process.exit(1); });
+app.listen(port, () => console.log(`BoostPanel berjalan pada port ${port}`));
