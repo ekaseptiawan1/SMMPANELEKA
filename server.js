@@ -154,7 +154,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
 });
 app.post('/api/orders/bulk', requireAuth, async (req,res) => {
   const serviceId = Number(req.body.service_id), quantity = Number(req.body.quantity);
-  const targets = [...new Set(String(req.body.targets || '').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean))];
+  const targets = [...new Set(String(req.body.targets || '').split(/\r?\n/).map(x=>x.trim()).filter(Boolean))];
   if (!Number.isSafeInteger(serviceId) || !Number.isSafeInteger(quantity) || !targets.length || targets.length > 50 || targets.some(x=>x.length>1000)) return res.status(400).json({ error: 'Isi 1–50 link berbeda, dan pastikan jumlah pesanan valid.' });
   const client = await pool.connect();
   let service, created=[];
