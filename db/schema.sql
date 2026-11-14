@@ -80,3 +80,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_services_supplier_service_id_unique ON ser
 ALTER TABLE deposits ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'bank_transfer';
 ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_reference TEXT;
 ALTER TABLE deposits ADD COLUMN IF NOT EXISTS admin_note TEXT;
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
