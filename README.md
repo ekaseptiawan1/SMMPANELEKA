@@ -16,18 +16,18 @@ Starter full-stack untuk dikembangkan menjadi panel SMM. Termasuk registrasi/log
 
 ## Instalasi lokal
 1. Buat database PostgreSQL bernama `boostpanel`.
-2. Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_EMAIL`, dan `ADMIN_PASSWORD`.
+2. Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL` dan `SESSION_SECRET`. Jangan masukkan kredensial admin, rekening, atau WhatsApp ke file `.env`/GitHub.
 3. Jalankan:
    ```bash
    npm install
    npm run db:init
    npm start
    ```
-4. Buka `http://localhost:3000`. Admin awal dibuat sekali saat server pertama berjalan jika belum ada admin.
-5. Login admin, lalu tambahkan layanan secara manual atau sesuaikan adapter untuk sinkronisasi supplier.
+4. Buat akun admin secara privat melalui terminal server: `npm run admin:create` (email dan password diminta interaktif).
+5. Jalankan `npm start`, login memakai akun tersebut, lalu isi rekening SEA BANK dan WhatsApp melalui bagian Pengaturan Admin.
 
 ## Deposit transfer SEA BANK (manual)
-Isi di `.env` pada server: `SEA_BANK_ACCOUNT_NAME`, `SEA_BANK_ACCOUNT_NUMBER`, dan `ADMIN_WHATSAPP_NUMBER` (format internasional angka saja, misalnya `6281234567890`, tanpa tanda `+`, spasi, atau strip). Setelah member membuat permintaan deposit, browser diarahkan ke `wa.me` dengan pesan berisi ID deposit, ID/nama/email member, nominal, serta referensi transfer. Admin juga melihat ID member dan nama di daftar deposit. Jika nomor WhatsApp belum diisi dengan benar, permintaan tetap tersimpan tetapi member tidak otomatis diarahkan ke WhatsApp. Member membuat permintaan deposit, mentransfer sesuai nominal, lalu mengisi nomor referensi/keterangan transfer. Admin memeriksa mutasi rekening SEA BANK secara langsung dan menekan **Setujui** atau **Tolak** pada dashboard. Saldo hanya ditambahkan satu kali ketika status pending disetujui dalam transaksi database.
+Isi nama pemilik rekening, nomor rekening, dan WhatsApp melalui **Pengaturan Admin**. Nilai disimpan di tabel `app_settings` dalam PostgreSQL (format internasional angka saja, misalnya `6281234567890`, tanpa tanda `+`, spasi, atau strip). Setelah member membuat permintaan deposit, browser diarahkan ke `wa.me` dengan pesan berisi ID deposit, ID/nama/email member, nominal, serta referensi transfer. Admin juga melihat ID member dan nama di daftar deposit. Jika nomor WhatsApp belum diisi dengan benar, permintaan tetap tersimpan tetapi member tidak otomatis diarahkan ke WhatsApp. Member membuat permintaan deposit, mentransfer sesuai nominal, lalu mengisi nomor referensi/keterangan transfer. Admin memeriksa mutasi rekening SEA BANK secara langsung dan menekan **Setujui** atau **Tolak** pada dashboard. Saldo hanya ditambahkan satu kali ketika status pending disetujui dalam transaksi database.
 
 **Penting:** sistem ini tidak terhubung ke API SEA BANK dan tidak dapat mendeteksi transfer otomatis. Jangan menyetujui hanya berdasarkan screenshot/nomor referensi; cocokkan nominal, waktu, dan transaksi pada rekening. Jangan meminta atau menyimpan PIN, password, OTP, atau kredensial mobile banking.
 
@@ -50,7 +50,7 @@ Sesuaikan auth, path, payload, serta mapping status dengan dokumentasi supplier.
 - `GET /api/services`, `GET /api/payment-info`
 - `POST /api/deposits` (manual SEA BANK), `PATCH /api/admin/deposits/:id/review`
 - `POST /api/orders`, `GET /api/member/summary`
-- Admin: `/api/admin/overview`, `/users`, `/orders`, `/deposits`, `/services`, `/sync-supplier`
+- Admin: `/api/admin/overview`, `/users`, `/orders`, `/deposits`, `/services`, `/settings`, `/account`, `/sync-supplier`
 
 ## Catatan teknis / pekerjaan lanjutan
 - Tambahkan CSRF protection untuk deployment lintas-origin atau ubah autentikasi ke pola yang sesuai; pertahankan cookie `SameSite` dan origin allowlist.
@@ -59,3 +59,11 @@ Sesuaikan auth, path, payload, serta mapping status dengan dokumentasi supplier.
 - Implementasikan refresh status order terjadwal, pagination, filter, export, reset password, verifikasi email, 2FA admin, serta pembatasan IP untuk panel admin.
 - Terapkan kebijakan harga/markup dan pemisahan harga supplier dari harga jual jika dibutuhkan.
 - Tambahkan unit/integration tests sebelum produksi.
+
+
+## Kredensial dan pengaturan privat
+- Email admin disimpan pada `users.email`; password hanya disimpan sebagai hash bcrypt di `users.password_hash`.
+- Buat admin pertama dengan `npm run admin:create` di terminal hosting/server. Perintah menolak membuat akun admin kedua bila sudah ada admin.
+- Email dan password admin dapat diganti setelah login melalui bagian Akun Admin di dashboard.
+- Nama rekening SEA BANK, nomor rekening, dan nomor WhatsApp admin disimpan di tabel `app_settings` dan diedit dari Pengaturan Pembayaran.
+- Jangan commit `.env`, backup database, atau kredensial. Jika sebelumnya kredensial pernah terunggah, segera ganti.
