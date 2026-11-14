@@ -13,6 +13,10 @@ async function refresh(){
  history.replaceState(null,'',location.pathname);
  $('#auth-entry').classList.add('hidden');
  $('#nav-user').textContent=currentUser.name;
+ $('#member-profile-menu').classList.toggle('hidden',currentUser.role!=='member');
+ $('#header-avatar').textContent=(currentUser.name||'M').trim().charAt(0).toUpperCase();
+ $('#dropdown-name').textContent=currentUser.name;
+ $('#dropdown-email').textContent=currentUser.email;
  $('#login').classList.add('hidden');
  $('#register').classList.add('hidden');
  $('#dashboard').classList.toggle('hidden',currentUser.role==='admin');
@@ -51,6 +55,10 @@ function showMemberPage(pageId){
  if(pageId==='orders-page')loadMemberPage(pageId).catch(e=>toast(e.message));
 }
 document.querySelectorAll('.member-tab').forEach(btn=>btn.addEventListener('click',()=>showMemberPage(btn.dataset.page)));
+$('#profile-menu-toggle').addEventListener('click',()=>{const d=$('#profile-dropdown');const opening=d.classList.contains('hidden');d.classList.toggle('hidden',!opening);$('#profile-menu-toggle').setAttribute('aria-expanded',String(opening));});
+document.querySelectorAll('[data-member-page]').forEach(btn=>btn.addEventListener('click',()=>{showMemberPage(btn.dataset.memberPage);$('#profile-dropdown').classList.add('hidden');$('#profile-menu-toggle').setAttribute('aria-expanded','false');}));
+$('#menu-logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(e){toast(e.message)}});
+document.addEventListener('click',e=>{if(!e.target.closest('#member-profile-menu')){$('#profile-dropdown').classList.add('hidden');$('#profile-menu-toggle').setAttribute('aria-expanded','false')}});
 document.querySelectorAll('[data-go-page]').forEach(btn=>btn.addEventListener('click',()=>showMemberPage(btn.dataset.goPage)));
 $('#member-account').addEventListener('submit',async e=>{
  e.preventDefault();
