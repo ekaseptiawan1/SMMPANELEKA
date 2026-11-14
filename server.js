@@ -178,7 +178,7 @@ app.put('/api/member/account', requireAuth, async (req,res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const currentPassword = req.body.current_password;
   const newPassword = req.body.new_password;
-  if (name.length < 2 || name.length > 80 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(400).json({ error: 'Nama atau email tidak valid.' });
+  if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Nama atau email tidak valid.' });
   if (typeof currentPassword !== 'string' || !currentPassword) return res.status(400).json({ error: 'Masukkan password saat ini untuk konfirmasi.' });
   if (newPassword && (typeof newPassword !== 'string' || newPassword.length < 10)) return res.status(400).json({ error: 'Password baru minimal 10 karakter.' });
   try {
