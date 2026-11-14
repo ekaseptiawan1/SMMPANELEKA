@@ -50,4 +50,19 @@ body.authenticated #nav-user{display:inline-block;color:var(--muted);font-size:1
 #member-account button{margin-top:4px}
 @media(max-width:760px){.profile-grid{grid-template-columns:1fr}}
 
-.member-dash-head{gap:14px;align-items:flex-start}.member-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.member-tabs{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;margin:0}.member-tabs .member-tab{padding:9px 12px;font-size:13px}@media(max-width:760px){.member-dash-head{align-items:flex-start;flex-direction:column}.member-top-actions{width:100%;justify-content:flex-start}.member-tabs{justify-content:flex-start}.member-tabs .member-tab{padding:8px 10px;font-size:12px}}
+/* Menu profil berbentuk avatar di kanan atas header */
+#member-profile-menu{position:relative;margin-left:auto;display:flex;align-items:center}
+#member-profile-menu.hidden{display:none!important}
+.profile-menu-toggle{padding:3px;border:2px solid #718cff;border-radius:50%;background:transparent;display:grid;place-items:center}
+.header-avatar{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#718cff,#36d6ad);color:#fff;font-size:18px;font-weight:900}
+.profile-dropdown{position:absolute;right:0;top:calc(100% + 12px);width:240px;padding:9px;background:#121e31;border:1px solid #293a55;border-radius:14px;box-shadow:0 14px 35px #0008;z-index:20}
+.profile-dropdown.hidden{display:none!important}
+.dropdown-account{padding:10px 11px 12px;border-bottom:1px solid #293a55;margin-bottom:6px;overflow:hidden}
+.dropdown-account b,.dropdown-account small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dropdown-account small{color:#9aabc3;font-size:12px;margin-top:3px}
+.profile-dropdown button{display:block;width:100%;text-align:left;padding:10px 11px;background:transparent;color:#eff4ff;border-radius:8px;font-size:13px}
+.profile-dropdown button:hover{background:#263b68}
+.profile-dropdown .dropdown-logout{border-top:1px solid #293a55;border-radius:0;color:#ffaaaa;margin-top:5px}
+body.authenticated header{gap:12px}
+body.authenticated #nav-user{display:none!important}
+@media(max-width:760px){header{gap:8px}.brand{font-size:19px}.profile-dropdown{right:0;width:min(240px,calc(100vw - 24px))}}
