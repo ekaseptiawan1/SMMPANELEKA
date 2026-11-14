@@ -10,6 +10,14 @@ async function loadAdminSettings(){const d=await api('/admin/settings');const s=
 async function loadAdminServices(){const d=await api('/admin/services');const esc=v=>String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));$('#admin-services').innerHTML=d.services.length?'<table><thead><tr><th>Layanan</th><th>Modal / 1.000</th><th>Harga jual / 1.000</th><th>Selisih</th><th>Aksi</th></tr></thead><tbody>'+d.services.map(s=>`<tr><td>${esc(s.platform)} — ${esc(s.name)}<br><small>ID ${esc(s.supplier_service_id||'-')}</small></td><td>${money(s.supplier_rate)}</td><td><input class="admin-sell-price" type="number" min="0" step="1" value="${Number(s.rate)}" data-id="${s.id}" style="width:120px"></td><td>${money(Number(s.rate)-Number(s.supplier_rate))}</td><td><button class="save-service-price" data-id="${s.id}">Simpan</button></td></tr>`).join('')+'</tbody></table>':'<p class="muted">Belum ada layanan.</p>'}
 $('#admin-settings').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));await api('/admin/settings',{method:'PUT',body:JSON.stringify(f)});toast('Pengaturan pembayaran disimpan');await loadPaymentInfo()}catch(x){toast(x.message)}});
 $('#admin-account').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));const d=await api('/admin/account',{method:'PUT',body:JSON.stringify(f)});currentUser=d.user;$('#welcome').textContent=`Halo, ${currentUser.name} · ${currentUser.email}`;e.target.password.value='';toast('Akun admin diperbarui')}catch(x){toast(x.message)}});
+$('#toggle-login-password').addEventListener('click',()=>{
+ const input=$('#login-password');
+ const visible=input.type==='password';
+ input.type=visible?'text':'password';
+ const button=$('#toggle-login-password');
+ button.textContent=visible?'Sembunyikan password':'Lihat password';
+ button.setAttribute('aria-pressed',String(visible));
+});
 $('#login').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/login',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Berhasil login')}catch(x){toast(x.message)}});
 $('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/register',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Akun berhasil dibuat')}catch(x){toast(x.message)}});
 $('#logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.reload()});
