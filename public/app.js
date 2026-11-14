@@ -26,7 +26,7 @@ async function refresh(){
  if(currentUser.role==='admin'){
    await loadAdmin();
  }else{
-   showMemberPage('profile-page');
+   showMemberPage('order-page');
  }
 }
 async function loadMemberPage(pageId){
