@@ -172,6 +172,26 @@ app.put('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
   await audit(req.session.user.id,'settings_updated',{ keys:Object.keys(fields) });
   res.json({ ok:true });
 });
+app.put('/api/member/account', requireAuth, async (req,res) => {
+  if (req.session.user.role !== 'member') return res.status(403).json({ error: 'Akses khusus member.' });
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const currentPassword = req.body.current_password;
+  const newPassword = req.body.new_password;
+  if (name.length < 2 || name.length > 80 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(400).json({ error: 'Nama atau email tidak valid.' });
+  if (typeof currentPassword !== 'string' || !currentPassword) return res.status(400).json({ error: 'Masukkan password saat ini untuk konfirmasi.' });
+  if (newPassword && (typeof newPassword !== 'string' || newPassword.length < 10)) return res.status(400).json({ error: 'Password baru minimal 10 karakter.' });
+  try {
+    const found = await pool.query('SELECT password_hash FROM users WHERE id=$1 AND role=\'member\'', [req.session.user.id]);
+    if (!found.rows[0] || !await bcrypt.compare(currentPassword, found.rows[0].password_hash)) return res.status(401).json({ error: 'Password saat ini salah.' });
+    const hash = newPassword ? await bcrypt.hash(newPassword,12) : null;
+    const { rows } = await pool.query('UPDATE users SET name=$1,email=$2,password_hash=COALESCE($3,password_hash) WHERE id=$4 AND role=\'member\' RETURNING id,name,email,role,balance', [name,email,hash,req.session.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Akun member tidak ditemukan.' });
+    req.session.user = publicUser(rows[0]);
+    await audit(rows[0].id,'member_account_updated',{ name_changed:true,email_changed:true,password_changed:Boolean(newPassword) });
+    res.json({ ok:true,user:req.session.user });
+  } catch(e) { res.status(e.code === '23505' ? 409 : 500).json({ error: e.code === '23505' ? 'Email sudah digunakan akun lain.' : 'Gagal memperbarui akun member.' }); }
+});
 app.put('/api/admin/account', requireAuth, requireAdmin, async (req,res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const password = req.body.password;
