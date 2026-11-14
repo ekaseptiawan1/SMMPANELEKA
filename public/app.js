@@ -22,11 +22,25 @@ async function refresh(){
  if(currentUser.role==='admin'){
    await loadAdmin();
  }else{
-   const s=await api('/member/summary');
-   $('#orders').innerHTML=table(s.orders.map(x=>({...x,charge:money(x.charge)})),[['id','ID'],['platform','Platform'],['service_name','Layanan'],['quantity','Jumlah'],['charge','Biaya'],['status','Status']]);
-   $('#deposits').innerHTML=table(s.deposits.map(x=>({...x,amount:money(x.amount)})),[['id','ID'],['amount','Nominal'],['status','Status'],['payment_url','Link bayar']]);
+   showMemberPage('order-page');
  }
 }
+async function loadMemberPage(pageId){
+ const s=await api('/member/summary');
+ if(pageId==='orders-page'){
+   $('#orders').innerHTML=table(s.orders.map(x=>({...x,charge:money(x.charge)})),[['id','ID'],['platform','Platform'],['service_name','Layanan'],['quantity','Jumlah'],['charge','Biaya'],['status','Status']]);
+ }
+ if(pageId==='deposit-page'){
+   $('#deposits').innerHTML=table(s.deposits.map(x=>({...x,amount:money(x.amount)})),[['id','ID'],['amount','Nominal'],['status','Status'],['proof_reference','Referensi']]);
+ }
+}
+function showMemberPage(pageId){
+ document.querySelectorAll('.member-page').forEach(el=>el.classList.toggle('hidden',el.id!==pageId));
+ document.querySelectorAll('.member-tab').forEach(el=>el.classList.toggle('active',el.dataset.page===pageId));
+ if(pageId==='deposit-page')loadPaymentInfo().then(()=>loadMemberPage(pageId)).catch(e=>toast(e.message));
+ if(pageId==='orders-page')loadMemberPage(pageId).catch(e=>toast(e.message));
+}
+document.querySelectorAll('.member-tab').forEach(btn=>btn.addEventListener('click',()=>showMemberPage(btn.dataset.page)));
 async function loadAdmin(){await loadAdminSettings();const d=await api('/admin/overview');$('#admin-stats').innerHTML=[['Member',d.members],['Total order',d.orders],['Deposit pending',d.pending_deposits],['Gross sales',money(d.gross_sales)]].map(x=>`<div class="stat"><b>${x[1]}</b><span class="muted">${x[0]}</span></div>`).join('');const u=await api('/admin/users');$('#users').innerHTML=table(u.users,[['id','ID'],['name','Nama'],['email','Email'],['balance','Saldo'],['role','Role']]);const o=await api('/admin/orders');$('#admin-orders').innerHTML=table(o.orders,[['id','ID'],['email','Member'],['platform','Platform'],['service_name','Layanan'],['charge','Biaya'],['status','Status']]);const dp=await api('/admin/deposits');$('#admin-deposits').innerHTML=dp.deposits.length?'<table><thead><tr><th>ID Deposit / Member</th><th>Nominal</th><th>Bukti / Referensi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+dp.deposits.map(d=>`<tr><td>Deposit #${d.id}<br>Member #${d.member_id} — ${String(d.member_name||'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}<br>${d.email}</td><td>${money(d.amount)}</td><td>${String(d.proof_reference||'—').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}</td><td>${d.status}</td><td>${d.status==='pending'?`<button class="review-deposit" data-id="${d.id}" data-action="approve">Setujui</button> <button class="secondary review-deposit" data-id="${d.id}" data-action="reject">Tolak</button>`:'—'}</td></tr>`).join('')+'</tbody></table>':'<p class="muted">Belum ada deposit.</p>';await loadAdminServices()}
 async function loadAdminSettings(){const d=await api('/admin/settings');const s=d.settings||{};$('#setting-account-name').value=s.sea_bank_account_name||'';$('#setting-account-number').value=s.sea_bank_account_number||'';$('#setting-whatsapp').value=s.admin_whatsapp_number||'';$('#admin-email').value=currentUser.email;}
 async function loadAdminServices(){const d=await api('/admin/services');const esc=v=>String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));$('#admin-services').innerHTML=d.services.length?'<table><thead><tr><th>Layanan</th><th>Modal / 1.000</th><th>Harga jual / 1.000</th><th>Selisih</th><th>Aksi</th></tr></thead><tbody>'+d.services.map(s=>`<tr><td>${esc(s.platform)} — ${esc(s.name)}<br><small>ID ${esc(s.supplier_service_id||'-')}</small></td><td>${money(s.supplier_rate)}</td><td><input class="admin-sell-price" type="number" min="0" step="1" value="${Number(s.rate)}" data-id="${s.id}" style="width:120px"></td><td>${money(Number(s.rate)-Number(s.supplier_rate))}</td><td><button class="save-service-price" data-id="${s.id}">Simpan</button></td></tr>`).join('')+'</tbody></table>':'<p class="muted">Belum ada layanan.</p>'}
