@@ -152,6 +152,45 @@ app.post('/api/orders', requireAuth, async (req,res) => {
   } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Pesanan gagal diproses.' }); }
   finally { client.release(); }
 });
+app.post('/api/orders/bulk', requireAuth, async (req,res) => {
+  const serviceId = Number(req.body.service_id), quantity = Number(req.body.quantity);
+  const targets = [...new Set(String(req.body.targets || '').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean))];
+  if (!Number.isSafeInteger(serviceId) || !Number.isSafeInteger(quantity) || !targets.length || targets.length > 50 || targets.some(x=>x.length>1000)) return res.status(400).json({ error: 'Isi 1–50 link berbeda, dan pastikan jumlah pesanan valid.' });
+  const client = await pool.connect();
+  let service, created=[];
+  try {
+    await client.query('BEGIN');
+    const sr = await client.query('SELECT * FROM services WHERE id=$1 AND active=true FOR UPDATE', [serviceId]);
+    service = sr.rows[0];
+    if (!service || quantity < service.min_qty || quantity > service.max_qty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia atau jumlah di luar batas.' }); }
+    const eachCharge = Math.ceil(Number(service.rate) * quantity / 1000);
+    const totalCharge = eachCharge * targets.length;
+    const ur = await client.query('SELECT balance FROM users WHERE id=$1 FOR UPDATE', [req.session.user.id]);
+    if (!ur.rows[0] || Number(ur.rows[0].balance) < totalCharge) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Saldo tidak mencukupi untuk seluruh link. Silakan deposit.' }); }
+    for (const target of targets) {
+      const order = await client.query("INSERT INTO orders(user_id,service_id,target,quantity,charge,status) VALUES($1,$2,$3,$4,$5,'processing') RETURNING id", [req.session.user.id,serviceId,target,quantity,eachCharge]);
+      created.push({id:order.rows[0].id,target,quantity,charge:eachCharge});
+    }
+    const newBal = await client.query('UPDATE users SET balance=balance-$1 WHERE id=$2 RETURNING balance', [totalCharge,req.session.user.id]);
+    await client.query("INSERT INTO wallet_transactions(user_id,type,amount,balance_after,reference,note) VALUES($1,'order',$2,$3,$4,$5)", [req.session.user.id,-totalCharge,newBal.rows[0].balance,created.map(x=>x.id).join(','),'Pembayaran pesanan massal ('+created.length+' link)']);
+    await client.query('COMMIT');
+  } catch (e) { await client.query('ROLLBACK'); return res.status(500).json({ error: 'Pesanan massal gagal diproses.' }); }
+  finally { client.release(); }
+  let success=0, failed=0;
+  for (const order of created) {
+    try {
+      const result = await supplier.createOrder({ service, target:order.target, quantity:order.quantity });
+      const supplierId = result.order || result.order_id || result.id;
+      await pool.query('UPDATE orders SET supplier_order_id=$1,status=$2,updated_at=NOW() WHERE id=$3', [supplierId ? String(supplierId) : null, result.status || 'pending', order.id]);
+      success++;
+    } catch (err) {
+      await pool.query("UPDATE orders SET status='supplier_error',updated_at=NOW() WHERE id=$1", [order.id]);
+      await audit(req.session.user.id, 'supplier_order_error', { order_id:order.id, message:err.message });
+      failed++;
+    }
+  }
+  res.json({ order_ids:created.map(x=>x.id), count:created.length, success, failed, charge:created.reduce((n,x)=>n+x.charge,0), message:'Pesanan massal diproses untuk '+created.length+' link.' });
+});
 app.get('/api/member/summary', requireAuth, async (req,res) => {
   const id = req.session.user.id;
   const [orders,deposits,tx] = await Promise.all([
