@@ -49,3 +49,5 @@ body.authenticated #nav-user{display:inline-block;color:var(--muted);font-size:1
 .profile-shortcuts{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 #member-account button{margin-top:4px}
 @media(max-width:760px){.profile-grid{grid-template-columns:1fr}}
+
+.member-dash-head{gap:14px;align-items:flex-start}.member-top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}.member-tabs{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end;margin:0}.member-tabs .member-tab{padding:9px 12px;font-size:13px}@media(max-width:760px){.member-dash-head{align-items:flex-start;flex-direction:column}.member-top-actions{width:100%;justify-content:flex-start}.member-tabs{justify-content:flex-start}.member-tabs .member-tab{padding:8px 10px;font-size:12px}}
