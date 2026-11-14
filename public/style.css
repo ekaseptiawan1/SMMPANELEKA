@@ -66,3 +66,18 @@ body.authenticated #nav-user{display:inline-block;color:var(--muted);font-size:1
 body.authenticated header{gap:12px}
 body.authenticated #nav-user{display:none!important}
 @media(max-width:760px){header{gap:8px}.brand{font-size:19px}.profile-dropdown{right:0;width:min(240px,calc(100vw - 24px))}}
+
+/* Katalog layanan member dengan filter kategori dan pencarian */
+.member-catalog{max-width:none!important;margin-bottom:16px}
+.member-catalog>input{display:block;width:100%;margin:12px 0;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:12px;color:var(--text)}
+.category-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.category-chip{background:#0a1424;border:1px solid var(--line);color:#c8d5ea;padding:8px 13px;border-radius:999px;font-size:13px}
+.category-chip.active{background:var(--blue);border-color:var(--blue);color:white}
+.member-service-catalog{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.member-service-card{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;background:#0a1424;border:1px solid var(--line);padding:13px;border-radius:11px;min-width:0}
+.member-service-card b{font-size:13px;line-height:1.4}
+.member-service-card span{color:#9ed9c9;font-weight:800}
+.member-service-card small{color:var(--muted);font-weight:500}
+.member-service-card.selected{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+@media(max-width:760px){.member-service-catalog{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.member-service-catalog{grid-template-columns:1fr}}
