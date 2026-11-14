@@ -26,6 +26,30 @@ Starter full-stack untuk dikembangkan menjadi panel SMM. Termasuk registrasi/log
 4. Buat akun admin secara privat melalui terminal server: `npm run admin:create` (email dan password diminta interaktif).
 5. Jalankan `npm start`, login memakai akun tersebut, lalu isi rekening SEA BANK dan WhatsApp melalui bagian Pengaturan Admin.
 
+## Menggunakan Supabase sebagai database
+
+BoostPanel memakai PostgreSQL melalui paket `pg`, sehingga dapat memakai database Supabase tanpa mengganti sistem database aplikasi.
+
+1. Buat project di Supabase, lalu buka **Project Settings → Database → Connect**.
+2. Ambil connection string PostgreSQL. Untuk hosting yang tidak mendukung IPv6, pilih **Session pooler** dan salin URI yang disediakan Supabase. Jangan gunakan password database di frontend.
+3. Pada pengaturan Environment Variables di hosting, isi:
+   - `DATABASE_URL`: connection string PostgreSQL dari Supabase.
+   - `PGSSL`: `true`.
+   - `SESSION_SECRET`: string acak panjang yang hanya disimpan di hosting.
+4. Jalankan perintah migrasi dari terminal/deploy command hosting:
+   ```bash
+   npm install
+   npm run db:init
+   ```
+5. Jika database Supabase masih kosong, buat admin pertama dengan `npm run admin:create`. Jika sudah memiliki admin, jangan jalankan perintah tersebut.
+6. Deploy/restart aplikasi, lalu uji registrasi, login, deposit, persetujuan deposit, dan pembuatan pesanan.
+
+**Penting:**
+- Jangan kirim connection string atau password database ke chat, GitHub, atau file frontend. Masukkan langsung ke Environment Variables hosting.
+- Jika password database mengandung karakter khusus, gunakan URI-encoding sesuai format connection string.
+- `npm run db:init` membuat/memperbarui struktur tabel; perintah ini **tidak memindahkan data lama** dari database sebelumnya. Jika sudah ada member, saldo, deposit, atau pesanan di database lama, lakukan backup dan migrasi data terpisah sebelum mengganti `DATABASE_URL`.
+- Simpan backup database dan gunakan kredensial database dengan hak akses minimum yang sesuai.
+
 ## Deposit transfer SEA BANK (manual)
 Isi nama pemilik rekening, nomor rekening, dan WhatsApp melalui **Pengaturan Admin**. Nilai disimpan di tabel `app_settings` dalam PostgreSQL (format internasional angka saja, misalnya `6281234567890`, tanpa tanda `+`, spasi, atau strip). Setelah member membuat permintaan deposit, browser diarahkan ke `wa.me` dengan pesan berisi ID deposit, ID/nama/email member, nominal, serta referensi transfer. Admin juga melihat ID member dan nama di daftar deposit. Jika nomor WhatsApp belum diisi dengan benar, permintaan tetap tersimpan tetapi member tidak otomatis diarahkan ke WhatsApp. Member membuat permintaan deposit, mentransfer sesuai nominal, lalu mengisi nomor referensi/keterangan transfer. Admin memeriksa mutasi rekening SEA BANK secara langsung dan menekan **Setujui** atau **Tolak** pada dashboard. Saldo hanya ditambahkan satu kali ketika status pending disetujui dalam transaksi database.
 
