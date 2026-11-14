@@ -166,7 +166,7 @@ app.get('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
   res.json({ settings: Object.fromEntries(rows.map(x => [x.key,x.value])) });
 });
 app.put('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
-  const fields = { sea_bank_account_name: String(req.body.sea_bank_account_name || '').trim(), sea_bank_account_number: String(req.body.sea_bank_account_number || '').replace(/\\s/g,''), admin_whatsapp_number: String(req.body.admin_whatsapp_number || '').replace(/\\D/g,'') };
+  const fields = { sea_bank_account_name: String(req.body.sea_bank_account_name || '').trim(), sea_bank_account_number: String(req.body.sea_bank_account_number || '').replace(/\s/g,''), admin_whatsapp_number: String(req.body.admin_whatsapp_number || '').replace(/\D/g,'') };
   if (fields.sea_bank_account_name.length > 120 || fields.sea_bank_account_number.length > 40 || (fields.admin_whatsapp_number && !/^[0-9]{8,15}$/.test(fields.admin_whatsapp_number))) return res.status(400).json({ error: 'Data rekening atau nomor WhatsApp tidak valid.' });
   for (const [key,value] of Object.entries(fields)) await pool.query('INSERT INTO app_settings(key,value,updated_at) VALUES($1,$2,NOW()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()', [key,value]);
   await audit(req.session.user.id,'settings_updated',{ keys:Object.keys(fields) });
@@ -175,7 +175,7 @@ app.put('/api/admin/settings', requireAuth, requireAdmin, async (req,res) => {
 app.put('/api/admin/account', requireAuth, requireAdmin, async (req,res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const password = req.body.password;
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) return res.status(400).json({ error: 'Email admin tidak valid.' });
+  if (!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email admin tidak valid.' });
   if (password && (typeof password !== 'string' || password.length < 12)) return res.status(400).json({ error: 'Password baru minimal 12 karakter.' });
   try {
     const hash = password ? await bcrypt.hash(password,12) : null;
