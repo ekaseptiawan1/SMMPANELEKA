@@ -31,7 +31,7 @@ async function loadMemberPage(pageId){
    $('#orders').innerHTML=table(s.orders.map(x=>({...x,charge:money(x.charge)})),[['id','ID'],['platform','Platform'],['service_name','Layanan'],['quantity','Jumlah'],['charge','Biaya'],['status','Status']]);
  }
  if(pageId==='deposit-page'){
-   $('#deposits').innerHTML=table(s.deposits.map(x=>({...x,amount:money(x.amount)})),[['id','ID'],['amount','Nominal'],['status','Status'],['proof_reference','Referensi']]);
+   $('#deposits').innerHTML=table(s.deposits.map(x=>({...x,amount:money(x.amount)})),[['id','ID'],['amount','Nominal'],['status','Status'],['payment_url','Link pembayaran'],['created_at','Tanggal']]);
  }
 }
 function showMemberPage(pageId){
@@ -66,7 +66,7 @@ $('#login').addEventListener('submit',async e=>{e.preventDefault();try{const f=n
 $('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/register',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await api('/auth/logout',{method:'POST'});e.target.reset();currentUser=null;location.hash='login';renderAuthRoute();toast('Registrasi berhasil. Silakan login dengan akun baru.')}catch(x){toast(x.message)}});
 $('#logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.reload()});
 $('#logout-admin').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(x){toast(x.message)}});
-$('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh()}catch(x){toast(x.message)}});
+$('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh();showMemberPage('deposit-page')}catch(x){toast(x.message)}});
 $('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const d=await api('/orders',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});toast(`Order #${d.order_id} tercatat · ${money(d.charge)}`);await refresh()}catch(x){toast(x.message)}});
 $('#new-service').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.rate=Number(f.rate);f.supplier_rate=Number(f.supplier_rate);await api('/admin/services',{method:'POST',body:JSON.stringify(f)});toast('Layanan ditambahkan');await loadServices();await loadAdmin()}catch(x){toast(x.message)}});
 $('#admin-deposits').addEventListener('click',async e=>{const b=e.target.closest('.review-deposit');if(!b)return;const note=b.dataset.action==='reject'?(prompt('Alasan penolakan (opsional):')||'') : '';try{await api(`/admin/deposits/${b.dataset.id}/review`,{method:'PATCH',body:JSON.stringify({action:b.dataset.action,note})});toast(b.dataset.action==='approve'?'Deposit disetujui, saldo member bertambah.':'Deposit ditolak.');await refresh()}catch(x){toast(x.message)}});
