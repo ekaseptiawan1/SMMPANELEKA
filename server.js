@@ -263,8 +263,8 @@ app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) 
       const supplierRate = Math.max(0,Math.round(Number(x.rate || x.price || 0)));
       const min = Math.max(1,Number(x.min || x.min_qty || 100));
       const max = Math.max(min,Number(x.max || x.max_qty || 100000));
-      await pool.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty)
-        VALUES($1,$2,$3,$4,$4,$5,$6)
+      await pool.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
+        VALUES($1,$2,$3,$4,0,$5,$6,false)
         ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
         DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
           min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,updated_at=NOW()`,[sid,platform,name,supplierRate,min,max]);
