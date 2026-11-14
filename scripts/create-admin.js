@@ -27,7 +27,7 @@ function askHidden(prompt){
   if(exists.rowCount) throw new Error('Admin sudah ada. Login lalu ubah email/password melalui dashboard.');
   const email=(await ask('Email admin: ')).trim().toLowerCase();
   rl.close();
-  if(!/^[^\s@]+@[^\s@]+\\.[^\s@]+$/.test(email)) throw new Error('Format email tidak valid.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Format email tidak valid.');
   const password=await askHidden('Password admin (min. 12 karakter, input disembunyikan): ');
   if(password.length<12) throw new Error('Password minimal 12 karakter.');
   const hash=await bcrypt.hash(password,12);
