@@ -18,6 +18,14 @@ $('#toggle-login-password').addEventListener('click',()=>{
  button.textContent=visible?'Sembunyikan password':'Lihat password';
  button.setAttribute('aria-pressed',String(visible));
 });
+$('#toggle-register-password').addEventListener('click',()=>{
+ const input=$('#register-password');
+ const visible=input.type==='password';
+ input.type=visible?'text':'password';
+ const button=$('#toggle-register-password');
+ button.textContent=visible?'Sembunyikan password':'Lihat password';
+ button.setAttribute('aria-pressed',String(visible));
+});
 $('#login').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/login',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Berhasil login')}catch(x){toast(x.message)}});
 $('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/register',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Akun berhasil dibuat')}catch(x){toast(x.message)}});
 $('#logout').addEventListener('click',async()=>{await api('/auth/logout',{method:'POST'});location.reload()});
