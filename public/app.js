@@ -3,7 +3,17 @@ async function api(url,opts={}){const r=await fetch('/api'+url,{credentials:'sam
 function toast(msg){const el=$('#message');el.textContent=msg;el.style.display='block';setTimeout(()=>el.style.display='none',4200)}
 function table(rows,cols){if(!rows?.length)return '<p class="muted">Belum ada data.</p>';return '<table><thead><tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+cols.map(c=>`<td>${String(row[c[0]]??'—').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}</td>`).join('')+'</tr>').join('')+'</tbody></table>'}
 async function loadPaymentInfo(){const d=await api('/payment-info');$('#bank-info').innerHTML=`<b>${d.bank}</b><br>Atas nama: ${d.account_name}<br>No. rekening: <b>${d.account_number}</b><br><small>${d.instructions}</small>`}
-async function loadServices(){const d=await api('/services');catalog=d.services;$('#services').innerHTML=catalog.length?catalog.map(s=>`<div class="service"><b>${s.platform} — ${s.name}</b><small>${money(s.rate)} / 1.000 · Min ${s.min_qty} · Maks ${s.max_qty}</small></div>`).join(''):'<p class="muted">Katalog belum diisi admin.</p>';$('#service-select').innerHTML=catalog.map(s=>`<option value="${s.id}">${s.platform} — ${s.name} (${money(s.rate)}/1k)</option>`).join('')}
+let selectedCategory='Semua';
+function esc(v){return String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+function renderMemberCatalog(){
+ const q=($('#member-service-search')?.value||'').trim().toLowerCase();
+ const categories=['Semua',...new Set(catalog.map(s=>s.platform||'Lainnya').sort((a,b)=>a.localeCompare(b,'id')))];
+ if(!categories.includes(selectedCategory))selectedCategory='Semua';
+ $('#member-category-filters').innerHTML=categories.map(c=>'<button type="button" class="category-chip '+(c===selectedCategory?'active':'')+'" data-category="'+esc(c)+'">'+esc(c)+'</button>').join('');
+ const filtered=catalog.filter(s=>(selectedCategory==='Semua'||(s.platform||'Lainnya')===selectedCategory)&&[s.platform,s.name,s.description].join(' ').toLowerCase().includes(q));
+ $('#member-service-catalog').innerHTML=filtered.length?filtered.map(s=>'<button type="button" class="member-service-card '+(String($('#service-select').value)===String(s.id)?'selected':'')+'" data-service-id="'+s.id+'"><b>'+esc(s.platform)+' · '+esc(s.name)+'</b><span>'+money(s.rate)+' / 1.000</span><small>Min '+esc(s.min_qty)+' · Maks '+esc(s.max_qty)+'</small></button>').join(''):'<p class="muted">Tidak ada layanan yang cocok. Coba kata kunci atau kategori lain.</p>';
+}
+async function loadServices(){const d=await api('/services');catalog=d.services;$('#services').innerHTML=catalog.length?catalog.map(s=>'<div class="service"><b>'+esc(s.platform)+' — '+esc(s.name)+'</b><small>'+money(s.rate)+' / 1.000 · Min '+s.min_qty+' · Maks '+s.max_qty+'</small></div>').join(''):'<p class="muted">Katalog belum diisi admin.</p>';$('#service-select').innerHTML=catalog.map(s=>'<option value="'+s.id+'">'+esc(s.platform)+' — '+esc(s.name)+' ('+money(s.rate)+'/1k)</option>').join('');renderMemberCatalog()}
 async function refresh(){
  const d=await api('/me');
  currentUser=d.user;
@@ -55,6 +65,11 @@ function showMemberPage(pageId){
  if(pageId==='orders-page')loadMemberPage(pageId).catch(e=>toast(e.message));
 }
 document.querySelectorAll('.member-tab').forEach(btn=>btn.addEventListener('click',()=>showMemberPage(btn.dataset.page)));
+$('#member-service-search').addEventListener('input',renderMemberCatalog);
+$('#member-category-filters').addEventListener('click',e=>{const b=e.target.closest('[data-category]');if(!b)return;selectedCategory=b.dataset.category;renderMemberCatalog()});
+$('#member-service-catalog').addEventListener('click',e=>{const b=e.target.closest('[data-service-id]');if(!b)return;$('#service-select').value=b.dataset.serviceId;renderMemberCatalog();$('#order').scrollIntoView({behavior:'smooth',block:'start'})});
+$('#service-select').addEventListener('change',renderMemberCatalog);
+
 $('#profile-menu-toggle').addEventListener('click',()=>{const d=$('#profile-dropdown');const opening=d.classList.contains('hidden');d.classList.toggle('hidden',!opening);$('#profile-menu-toggle').setAttribute('aria-expanded',String(opening));});
 document.querySelectorAll('[data-member-page]').forEach(btn=>btn.addEventListener('click',()=>{showMemberPage(btn.dataset.memberPage);$('#profile-dropdown').classList.add('hidden');$('#profile-menu-toggle').setAttribute('aria-expanded','false');}));
 $('#menu-logout').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(e){toast(e.message)}});
