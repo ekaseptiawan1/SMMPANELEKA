@@ -416,6 +416,38 @@ app.get('/api/admin/users', requireAuth, requireAdmin, async (req,res) => {
   const { rows } = await pool.query('SELECT id,name,email,role,balance,is_active,created_at FROM users ORDER BY created_at DESC LIMIT 200');
   res.json({ users: rows });
 });
+
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req,res) => {
+  const memberId = String(req.params.id || '');
+  if (!/^\\d+$/.test(memberId)) return res.status(400).json({ error: 'ID member tidak valid.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query('SELECT id,name,email,role,balance FROM users WHERE id=$1 FOR UPDATE', [memberId]);
+    const member = found.rows[0];
+    if (!member) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Member tidak ditemukan.' }); }
+    if (member.role !== 'member') { await client.query('ROLLBACK'); return res.status(403).json({ error: 'Akun admin tidak boleh dihapus melalui fitur ini.' }); }
+    if (Number(member.balance) !== 0) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Member masih memiliki saldo. Saldo harus diselesaikan terlebih dahulu.' }); }
+    const [orders, deposits, wallet] = await Promise.all([
+      client.query('SELECT 1 FROM orders WHERE user_id=$1 LIMIT 1', [memberId]),
+      client.query('SELECT 1 FROM deposits WHERE user_id=$1 LIMIT 1', [memberId]),
+      client.query('SELECT 1 FROM wallet_transactions WHERE user_id=$1 LIMIT 1', [memberId])
+    ]);
+    if (orders.rowCount || deposits.rowCount || wallet.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Member memiliki riwayat pesanan, deposit, atau transaksi saldo sehingga tidak dapat dihapus agar catatan tetap terjaga.' });
+    }
+    await client.query('UPDATE audit_logs SET actor_id=NULL WHERE actor_id=$1', [memberId]);
+    await client.query('DELETE FROM users WHERE id=$1', [memberId]);
+    await client.query('INSERT INTO audit_logs(actor_id,action,details) VALUES($1,$2,$3)', [req.session.user.id, 'admin_member_deleted', { member_id: member.id, name: member.name, email: member.email }]);
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'Akun member berhasil dihapus.' });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    console.error('Gagal menghapus member:', e.message);
+    res.status(500).json({ error: 'Gagal menghapus member.' });
+  } finally { client.release(); }
+});
 app.get('/api/admin/orders', requireAuth, requireAdmin, async (req,res) => {
   const { rows } = await pool.query('SELECT o.*,u.email,s.platform,s.name AS service_name FROM orders o JOIN users u ON u.id=o.user_id JOIN services s ON s.id=o.service_id ORDER BY o.created_at DESC LIMIT 300');
   res.json({ orders: rows });
