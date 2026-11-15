@@ -146,7 +146,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
           min < Number(s.min_qty) || max > Number(s.max_qty) || min > max ||
           !Number.isSafeInteger(posts) || posts < 1 || posts > 365 ||
           ![0,5,10,15,30,60,90].includes(delay) ||
-          (expiry && !/^(0[1-9]|[12][0-9]|3[01])\\/(0[1-9]|1[0-2])\\/[0-9]{4}$/.test(expiry))) {
+          (expiry && !/^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/[0-9]{4}$/.test(expiry))) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Periksa username, batas minimal/maksimal, jumlah posting, dan delay subscription.' });
       }
