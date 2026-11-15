@@ -120,7 +120,7 @@ $('#supplier-services-list').addEventListener('click',async e=>{
  const button=e.target.closest('.import-supplier-service');
  if(!button)return;
  const sid=button.dataset.importSupplier;
- const input=$('#supplier-services-list').querySelector('[data-retail-price-for="'+CSS.escape(sid)+'"]');
+ const input=Array.from($('#supplier-services-list').querySelectorAll('[data-retail-price-for]')).find(el=>el.dataset.retailPriceFor===sid);
  const rate=Number(input?.value);
  if(!Number.isSafeInteger(rate)||rate<=0){toast('Isi harga jual member lebih dari Rp0 terlebih dahulu.');input?.focus();return}
  button.disabled=true;
