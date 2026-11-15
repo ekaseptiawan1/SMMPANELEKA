@@ -90,3 +90,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_path TEXT;
+ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_mime TEXT;
+ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_size BIGINT;
