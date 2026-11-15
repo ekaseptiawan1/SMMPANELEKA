@@ -434,15 +434,16 @@ app.post('/api/admin/supplier-services/import', requireAuth, requireAdmin, async
     if (!item) return res.status(404).json({ error: 'Layanan tidak ditemukan lagi di katalog IndoSMM. Muat ulang daftar layanan.' });
     const platform = String(item.category || item.platform || 'Other');
     const name = String(item.name || item.description || ('Service ' + sid));
+    const serviceType = String(item.type || 'Default').slice(0,80);
     const supplierRate = Math.max(0,Math.round(Number(item.rate ?? item.price ?? 0)));
     const min = Math.max(1,Number(item.min ?? item.min_qty ?? 1));
     const max = Math.max(min,Number(item.max ?? item.max_qty ?? min));
-    const saved = await pool.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
-      VALUES($1,$2,$3,$4,$5,$6,$7,true)
+    const saved = await pool.query(`INSERT INTO services(supplier_service_id,platform,name,service_type,supplier_rate,rate,min_qty,max_qty,active)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)
       ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
       DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
-        rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()
-      RETURNING id`,[sid,platform,name,supplierRate,rate,min,max]);
+        service_type=EXCLUDED.service_type,rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()
+      RETURNING id`,[sid,platform,name,serviceType,supplierRate,rate,min,max]);
     await audit(req.session.user.id,'supplier_service_imported',{service_id:saved.rows[0].id,supplier_service_id:sid});
     res.json({ message: 'Layanan berhasil ditambahkan dan diaktifkan untuk member.', service_id:saved.rows[0].id });
   } catch (e) { res.status(502).json({ error: e.message }); }
@@ -457,14 +458,15 @@ app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) 
       if (!sid) continue;
       const platform = String(x.category || x.platform || 'Other');
       const name = String(x.name || x.description || `Service ${sid}`);
+      const serviceType = String(x.type || 'Default').slice(0,80);
       const supplierRate = Math.max(0,Math.round(Number(x.rate || x.price || 0)));
       const min = Math.max(1,Number(x.min || x.min_qty || 100));
       const max = Math.max(min,Number(x.max || x.max_qty || 100000));
-      await pool.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
-        VALUES($1,$2,$3,$4,0,$5,$6,false)
+      await pool.query(`INSERT INTO services(supplier_service_id,platform,name,service_type,supplier_rate,rate,min_qty,max_qty,active)
+        VALUES($1,$2,$3,$4,$5,0,$6,$7,false)
         ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
         DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
-          min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,updated_at=NOW()`,[sid,platform,name,supplierRate,min,max]);
+          service_type=EXCLUDED.service_type,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,updated_at=NOW()`,[sid,platform,name,serviceType,supplierRate,min,max]);
       count++;
     }
     res.json({ imported: count, message: 'Sinkronisasi selesai; periksa harga dan mapping sebelum layanan diaktifkan.' });
