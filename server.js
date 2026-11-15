@@ -57,26 +57,78 @@ async function refundFailedOrder(orderId, reason = 'Supplier gagal menerima pesa
 }
 
 app.get('/api/health', (req,res) => res.json({ ok: true, name: 'BoostPanel API' }));
+async function sendVerificationEmail(email, name, code) {
+  const nodemailer = require('nodemailer');
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) throw new Error('Konfigurasi SMTP_USER atau SMTP_PASS belum lengkap.');
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT || 465),
+    secure: String(process.env.SMTP_SECURE || 'true') === 'true',
+    auth: { user: process.env.SMTP_USER, pass: String(process.env.SMTP_PASS).replace(/\s/g, '') }
+  });
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM ? { name: process.env.SMTP_FROM, address: process.env.SMTP_USER } : process.env.SMTP_USER,
+    to: email,
+    subject: 'Kode verifikasi SMMPANELEKA',
+    text: 'Halo '+name+', kode verifikasi email SMMPANELEKA kamu adalah '+code+'. Kode berlaku selama 15 menit. Jangan bagikan kode ini kepada siapa pun.',
+    html: '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px"><h2>Verifikasi Email SMMPANELEKA</h2><p>Halo '+String(name).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))+', masukkan kode berikut untuk mengaktifkan akun:</p><div style="font-size:32px;font-weight:bold;letter-spacing:8px;padding:16px;background:#f2f4f7;text-align:center">'+code+'</div><p>Kode berlaku selama 15 menit. Jangan bagikan kode ini kepada siapa pun.</p></div>'
+  });
+}
+async function issueVerification(user) {
+  const code = String(crypto.randomInt(0,1000000)).padStart(6,'0');
+  const hash = crypto.createHash('sha256').update(code).digest('hex');
+  await pool.query('DELETE FROM email_verifications WHERE user_id=$1', [user.id]);
+  await pool.query('INSERT INTO email_verifications(user_id,code_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL \'15 minutes\')', [user.id,hash]);
+  await sendVerificationEmail(user.email,user.name,code);
+}
 app.post('/api/auth/register', rateLimit({ windowMs: 15*60*1000, limit: 8 }), async (req,res) => {
   try {
     const { name, email, password } = req.body || {};
     if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '') || typeof password !== 'string' || password.length < 10) {
       return res.status(400).json({ error: 'Nama, email valid, dan password minimal 10 karakter wajib diisi.' });
     }
-    const hash = await bcrypt.hash(password, 12);
-    const { rows } = await pool.query('INSERT INTO users(name,email,password_hash) VALUES($1,lower($2),$3) RETURNING *', [name.trim(), email, hash]);
-    req.session.user = publicUser(rows[0]);
-    res.json({ user: req.session.user });
-  } catch (e) { res.status(400).json({ error: e.code === '23505' ? 'Email sudah terdaftar.' : 'Registrasi gagal.' }); }
+    const hash = await bcrypt.hash(password,12);
+    const inserted = await pool.query('INSERT INTO users(name,email,password_hash,email_verified) VALUES($1,lower($2),$3,false) RETURNING id,name,email', [name.trim(),email,hash]);
+    const user = inserted.rows[0];
+    try {
+      await issueVerification(user);
+      res.json({ verification_required:true,email:user.email,message:'Kode verifikasi sudah dikirim ke email kamu.' });
+    } catch (mailError) {
+      console.error('Gagal mengirim email verifikasi:',mailError.message);
+      res.status(502).json({ verification_required:true,email:user.email,error:'Akun sudah dibuat, tetapi email belum berhasil dikirim. Gunakan Kirim Ulang Kode pada halaman verifikasi.' });
+    }
+  } catch(e) { res.status(400).json({ error:e.code==='23505'?'Email sudah terdaftar.':'Registrasi gagal.' }); }
+});
+app.post('/api/auth/verify-email', rateLimit({ windowMs: 15*60*1000, limit: 12 }), async (req,res) => {
+  const email=String(req.body.email||'').trim().toLowerCase();
+  const code=String(req.body.code||'').trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!/^\d{6}$/.test(code)) return res.status(400).json({error:'Masukkan email dan kode 6 digit yang valid.'});
+  try {
+    const found=await pool.query('SELECT u.id,v.code_hash FROM users u JOIN email_verifications v ON v.user_id=u.id WHERE u.email=$1 AND u.email_verified=false AND v.expires_at>NOW()', [email]);
+    if(!found.rows[0]||crypto.createHash('sha256').update(code).digest('hex')!==found.rows[0].code_hash) return res.status(400).json({error:'Kode salah atau sudah kedaluwarsa. Minta kode baru.'});
+    await pool.query('UPDATE users SET email_verified=true WHERE id=$1',[found.rows[0].id]);
+    await pool.query('DELETE FROM email_verifications WHERE user_id=$1',[found.rows[0].id]);
+    res.json({ok:true,message:'Email berhasil diverifikasi. Silakan login.'});
+  } catch(e) { console.error('Verifikasi email gagal:',e.message); res.status(500).json({error:'Verifikasi gagal. Coba lagi.'}); }
+});
+app.post('/api/auth/resend-verification', rateLimit({ windowMs: 15*60*1000, limit: 4 }), async (req,res) => {
+  const email=String(req.body.email||'').trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error:'Masukkan alamat email yang valid.'});
+  try {
+    const found=await pool.query('SELECT id,name,email FROM users WHERE email=$1 AND email_verified=false',[email]);
+    if(!found.rows[0]) return res.json({ok:true,message:'Jika akun belum terverifikasi, kode baru akan dikirim.'});
+    await issueVerification(found.rows[0]);
+    res.json({ok:true,message:'Kode verifikasi baru sudah dikirim.'});
+  } catch(e) { console.error('Kirim ulang kode gagal:',e.message); res.status(502).json({error:'Email gagal dikirim. Periksa konfigurasi SMTP server.'}); }
 });
 app.post('/api/auth/login', rateLimit({ windowMs: 15*60*1000, limit: 10 }), async (req,res) => {
-  const { email, password } = req.body || {};
-  const { rows } = await pool.query('SELECT * FROM users WHERE email=lower($1) AND is_active=true', [email || '']);
-  if (!rows[0] || !await bcrypt.compare(password || '', rows[0].password_hash)) return res.status(401).json({ error: 'Email atau password salah.' });
-  req.session.regenerate(err => {
-    if (err) return res.status(500).json({ error: 'Gagal membuat sesi.' });
-    req.session.user = publicUser(rows[0]);
-    res.json({ user: req.session.user });
+  const { email,password }=req.body||{};
+  const { rows }=await pool.query('SELECT * FROM users WHERE email=lower($1) AND is_active=true',[email||'']);
+  if(!rows[0]||!await bcrypt.compare(password||'',rows[0].password_hash)) return res.status(401).json({error:'Email atau password salah.'});
+  if(rows[0].email_verified===false) return res.status(403).json({error:'Email belum diverifikasi. Periksa Gmail dan masukkan kode verifikasi.'});
+  req.session.regenerate(err=>{
+    if(err)return res.status(500).json({error:'Gagal membuat sesi.'});
+    req.session.user=publicUser(rows[0]);res.json({user:req.session.user});
   });
 });
 app.post('/api/auth/logout', (req,res) => req.session.destroy(() => { res.clearCookie('boostpanel.sid'); res.json({ ok: true }); }));
@@ -323,6 +375,7 @@ app.put('/api/member/account', requireAuth, async (req,res) => {
   const currentPassword = req.body.current_password;
   const newPassword = req.body.new_password;
   if (name.length < 2 || name.length > 80 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Nama atau email tidak valid.' });
+  if (email !== String(req.session.user.email).toLowerCase()) return res.status(400).json({ error: 'Untuk keamanan, perubahan email belum tersedia. Hubungi admin.' });
   if (typeof currentPassword !== 'string' || !currentPassword) return res.status(400).json({ error: 'Masukkan password saat ini untuk konfirmasi.' });
   if (newPassword && (typeof newPassword !== 'string' || newPassword.length < 10)) return res.status(400).json({ error: 'Password baru minimal 10 karakter.' });
   try {
@@ -607,5 +660,7 @@ pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS service_type VARCHAR(8
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_enabled BOOLEAN NOT NULL DEFAULT false"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_value INTEGER NOT NULL DEFAULT 1"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_unit VARCHAR(10) NOT NULL DEFAULT 'seconds'"))
+  .then(() => pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
+  .then(() => pool.query('CREATE TABLE IF NOT EXISTS email_verifications (user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())'))
   .then(() => app.listen(port, () => console.log(`BoostPanel berjalan pada port ${port}`)))
   .catch(err => { console.error('Gagal menyiapkan kolom detail layanan:', err.message); process.exit(1); });
