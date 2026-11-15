@@ -130,46 +130,99 @@ app.post('/api/orders', requireAuth, async (req,res) => {
     const sr = await client.query('SELECT * FROM services WHERE id=$1 AND active=true FOR UPDATE', [serviceId]);
     const s = sr.rows[0];
     if (!s) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia.' }); }
-    const isSubscription = String(s.service_type || '').toLowerCase().includes('subscription');
-    let quantity, target, username, min, max;
-    if (isSubscription) {
-      username = String(req.body.username || '').trim().replace(/^@/, '');
-      min = Number(req.body.min);
-      max = Number(req.body.max);
-      if (!username || username.length > 100 || !/^[A-Za-z0-9._]+$/.test(username) ||
+    const type = supplier.serviceOrderType(s);
+    const input = req.body || {};
+    let quantity = 1, target = '', orderData = {};
+    const validTarget = value => {
+      const v = String(value || '').trim();
+      return v.length > 0 && v.length <= 1000 ? v : '';
+    };
+    if (type === 'subscriptions') {
+      const username = String(input.username || '').trim().replace(/^@/, '');
+      const min = Number(input.min), max = Number(input.max);
+      const posts = Number(input.posts || 0), delay = Number(input.delay || 0);
+      if (!/^[A-Za-z0-9._]{1,100}$/.test(username) ||
           !Number.isSafeInteger(min) || !Number.isSafeInteger(max) ||
-          min < Number(s.min_qty) || max > Number(s.max_qty) || min > max) {
+          min < Number(s.min_qty) || max > Number(s.max_qty) || min > max ||
+          !Number.isSafeInteger(posts) || posts < 0 || posts > 100000 ||
+          !Number.isSafeInteger(delay) || delay < 0 || delay > 86400) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Isi username Instagram yang valid dan pastikan minimal–maksimal sesuai batas layanan.' });
+        return res.status(400).json({ error: 'Periksa username, batas minimal/maksimal, jumlah posting, dan delay subscription.' });
       }
       quantity = max;
       target = username;
+      orderData = { username, min, max, posts, old_posts: input.old_posts === true, delay };
     } else {
-      quantity = Number(req.body.quantity);
-      target = String(req.body.target || '').trim();
-      if (!Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty) || !target || target.length > 1000) {
+      target = validTarget(input.target);
+      if (!target) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Link target wajib diisi dan maksimal 1.000 karakter.' }); }
+      if (type === 'package') {
+        quantity = 1;
+      } else if (type === 'custom_comments') {
+        const comments = String(input.comments || '').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+        if (!comments.length || comments.length > 10000 || comments.some(x=>x.length>500)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Isi daftar komentar, satu komentar per baris (maksimal 500 karakter per komentar).' });
+        }
+        quantity = comments.length;
+        orderData = { comments: comments.join('\\n') };
+      } else if (type === 'mentions') {
+        const usernames = String(input.usernames || '').split(/[\\r\\n,]+/).map(x=>x.trim()).filter(Boolean);
+        if (!usernames.length || usernames.length > 10000 || usernames.some(x=>!/^@?[A-Za-z0-9._]{1,100}$/.test(x))) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Isi username mention yang valid, satu username per baris atau dipisahkan koma.' });
+        }
+        quantity = usernames.length;
+        orderData = { usernames: usernames.map(x=>x.replace(/^@/, '')).join(',') };
+      } else {
+        quantity = Number(input.quantity);
+        if (!Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Jumlah pesanan di luar batas minimum dan maksimum layanan.' });
+        }
+        if (type === 'poll') {
+          const answerNumber = Number(input.answer_number);
+          if (!Number.isSafeInteger(answerNumber) || answerNumber < 1 || answerNumber > 1000) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Nomor pilihan Poll harus berupa angka 1–1000.' });
+          }
+          orderData = { answer_number: answerNumber };
+        }
+      }
+      if (type !== 'package' && type !== 'custom_comments' && type !== 'mentions' &&
+          (quantity < Number(s.min_qty) || quantity > Number(s.max_qty))) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Data pesanan tidak valid atau jumlah di luar batas layanan.' });
+        return res.status(400).json({ error: 'Jumlah pesanan di luar batas minimum dan maksimum layanan.' });
+      }
+      if ((type === 'custom_comments' || type === 'mentions') &&
+          (quantity < Number(s.min_qty) || quantity > Number(s.max_qty))) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Jumlah baris/username harus sesuai batas minimum dan maksimum layanan.' });
       }
     }
-    const charge = Math.ceil(Number(s.rate) * quantity / 1000);
+    const charge = type === 'package' ? Math.ceil(Number(s.rate)) : Math.ceil(Number(s.rate) * quantity / 1000);
+    if (!Number.isSafeInteger(charge) || charge < 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Harga layanan tidak valid.' });
+    }
     const ur = await client.query('SELECT balance FROM users WHERE id=$1 FOR UPDATE', [req.session.user.id]);
     if (!ur.rows[0] || Number(ur.rows[0].balance) < charge) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Saldo tidak mencukupi. Silakan deposit.' }); }
     const order = await client.query("INSERT INTO orders(user_id,service_id,target,quantity,charge,status) VALUES($1,$2,$3,$4,$5,'processing') RETURNING id", [req.session.user.id,serviceId,target,quantity,charge]);
     const newBal = await client.query('UPDATE users SET balance=balance-$1 WHERE id=$2 RETURNING balance', [charge,req.session.user.id]);
-    await client.query("INSERT INTO wallet_transactions(user_id,type,amount,balance_after,reference,note) VALUES($1,'order',$2,$3,$4,'Pembayaran pesanan')", [req.session.user.id,-charge,newBal.rows[0].balance,String(order.rows[0].id)]);
+    await client.query("INSERT INTO wallet_transactions(user_id,type,amount,balance_after,reference,note) VALUES($1,'order',$2,$3,$4,$5)", [req.session.user.id,-charge,newBal.rows[0].balance,String(order.rows[0].id),'Pembayaran pesanan '+type]);
     await client.query('COMMIT');
     try {
-      const result = await supplier.createOrder({ service: s, target, quantity, username, min, max });
+      const result = await supplier.createOrder({ service: s, target, quantity, orderData });
       const supplierId = result.order || result.order_id || result.id;
       await pool.query('UPDATE orders SET supplier_order_id=$1,status=$2,updated_at=NOW() WHERE id=$3', [supplierId ? String(supplierId) : null, result.status || 'pending', order.rows[0].id]);
     } catch (err) {
       await pool.query("UPDATE orders SET status='supplier_error',updated_at=NOW() WHERE id=$1", [order.rows[0].id]);
-      await audit(req.session.user.id, 'supplier_order_error', { order_id: order.rows[0].id, message: err.message });
+      await audit(req.session.user.id, 'supplier_order_error', { order_id: order.rows[0].id, service_type: type, message: err.message });
     }
-    res.json({ order_id: order.rows[0].id, charge, message: 'Pesanan tercatat. Periksa status pesanan di dashboard.' });
-  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Pesanan gagal diproses.' }); }
-  finally { client.release(); }
+    res.json({ order_id: order.rows[0].id, charge, quantity, service_type: type, message: 'Pesanan tercatat. Periksa status pesanan di dashboard.' });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    res.status(500).json({ error: 'Pesanan gagal diproses.' });
+  } finally { client.release(); }
 });
 app.post('/api/orders/bulk', requireAuth, async (req,res) => {
   const serviceId = Number(req.body.service_id), quantity = Number(req.body.quantity);
