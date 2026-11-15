@@ -472,8 +472,9 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
         continue;
       }
       const platform = String(item.category || item.platform || 'Other').trim().slice(0,120) || 'Other';
+      const description = String(item.description || item.desc || item.details || item.name || '').trim().slice(0,2000);
       byId.set(sid, [
-        sid, platform, name, String(item.type || 'Default').slice(0,80), Math.round(supplierRate),
+        sid, platform, name, String(item.type || 'Default').slice(0,80), description, Math.round(supplierRate),
         Math.ceil(supplierRate * 1.75), min, max
       ]);
     }
@@ -488,15 +489,15 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
       const batch = rows.slice(offset, offset + batchSize);
       const values = [];
       const placeholders = batch.map((row, index) => {
-        const base = index * 8;
+        const base = index * 9;
         values.push(...row);
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},true)`;
+        return `(${base+1},${base+2},${base+3},${base+4},${base+5},${base+6},${base+7},${base+8},${base+9},true)`;
       });
-      await client.query(`INSERT INTO services(supplier_service_id,platform,name,service_type,supplier_rate,rate,min_qty,max_qty,active)
+      await client.query(`INSERT INTO services(supplier_service_id,platform,name,service_type,description,supplier_rate,rate,min_qty,max_qty,active)
         VALUES ${placeholders.join(',')}
         ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
         DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
-          service_type=EXCLUDED.service_type,rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`, values);
+          service_type=EXCLUDED.service_type,description=EXCLUDED.description,rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`, values);
     }
 
     await client.query('COMMIT');
