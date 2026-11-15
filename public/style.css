@@ -128,3 +128,5 @@ body.authenticated #nav-user{display:none!important}
 .supplier-retail-price{width:135px;min-width:120px;background:#0a1424;border:1px solid var(--line);border-radius:8px;padding:9px;color:var(--text)}
 .import-supplier-service{white-space:nowrap;padding:9px 11px;font-size:12px}
 .import-supplier-service:disabled{opacity:.55;cursor:wait}
+
+.selected-service-info{margin:10px 0 16px;padding:12px 14px;border:1px solid var(--line,#d9dee8);border-radius:12px;background:var(--panel-soft,rgba(127,127,127,.06));line-height:1.7;font-size:.92rem}.selected-service-info small{display:block;margin-top:5px}
