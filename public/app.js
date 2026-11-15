@@ -64,9 +64,9 @@ function renderSelectedServiceInfo(){
  }
  if(isSubscription){
    $('#subscription-min').min=String(s.min_qty||1);
-   $('#subscription-min').max=String(s.max_qty||'');
+   $('#subscription-min').removeAttribute('max');
    $('#subscription-max').min=String(s.min_qty||1);
-   $('#subscription-max').max=String(s.max_qty||'');
+   $('#subscription-max').removeAttribute('max');
    $('#subscription-min').value=s.min_qty;
    $('#subscription-max').value=s.min_qty;
  }
