@@ -330,7 +330,7 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
         skipped++;
         continue;
       }
-      const retailRate = Math.ceil(supplierRate * 1.5);
+      const retailRate = Math.ceil(supplierRate * 1.75);
       const platform = String(item.category || item.platform || 'Other').trim().slice(0,120) || 'Other';
       await client.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
         VALUES($1,$2,$3,$4,$5,$6,$7,true)
@@ -341,8 +341,8 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
       activated++;
     }
     await client.query('COMMIT');
-    await audit(req.session.user.id,'supplier_services_auto_activated',{activated,skipped,markup_percent:50});
-    res.json({message:'Sinkronisasi otomatis selesai. Layanan aktif dengan harga jual modal +50%.',total:list.length,activated,skipped,markup_percent:50});
+    await audit(req.session.user.id,'supplier_services_auto_activated',{activated,skipped,markup_percent:75});
+    res.json({message:'Sinkronisasi otomatis selesai. Layanan aktif dengan harga jual modal +75%.',total:list.length,activated,skipped,markup_percent:75});
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(()=>{});
     res.status(502).json({error:e.message || 'Gagal memuat dan mengaktifkan layanan supplier.'});
