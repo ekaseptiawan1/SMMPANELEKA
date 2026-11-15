@@ -81,46 +81,68 @@ $('#member-account').addEventListener('submit',async e=>{
  }catch(x){toast(x.message)}
 });
 async function loadAdmin(){await loadAdminSettings();const d=await api('/admin/overview');$('#admin-stats').innerHTML=[['Member',d.members],['Total order',d.orders],['Deposit pending',d.pending_deposits],['Gross sales',money(d.gross_sales)]].map(x=>`<div class="stat"><b>${x[1]}</b><span class="muted">${x[0]}</span></div>`).join('');const u=await api('/admin/users');$('#users').innerHTML=table(u.users,[['id','ID'],['name','Nama'],['email','Email'],['balance','Saldo'],['role','Role']]);const o=await api('/admin/orders');$('#admin-orders').innerHTML=table(o.orders,[['id','ID'],['email','Member'],['platform','Platform'],['service_name','Layanan'],['charge','Biaya'],['status','Status']]);const dp=await api('/admin/deposits');$('#admin-deposits').innerHTML=dp.deposits.length?'<table><thead><tr><th>ID Deposit / Member</th><th>Nominal</th><th>Bukti / Referensi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+dp.deposits.map(d=>`<tr><td>Deposit #${d.id}<br>Member #${d.member_id} — ${String(d.member_name||'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}<br>${d.email}</td><td>${money(d.amount)}</td><td>${String(d.proof_reference||'—').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}</td><td>${d.status}</td><td>${d.status==='pending'?`<button class="review-deposit" data-id="${d.id}" data-action="approve">Setujui</button> <button class="secondary review-deposit" data-id="${d.id}" data-action="reject">Tolak</button>`:'—'}</td></tr>`).join('')+'</tbody></table>':'<p class="muted">Belum ada deposit.</p>';}
-let supplierCatalog=[];
-function renderSupplierCatalog(){
- const query=($('#supplier-service-search')?.value||'').trim().toLowerCase();
- const category=$('#supplier-category-filter')?.value||'';
- const rows=supplierCatalog.filter(s=>(!category||s.category===category)&&[s.service_id,s.category,s.name].join(' ').toLowerCase().includes(query));
- $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Harga modal / 1.000</th><th>Harga jual otomatis / 1.000</th><th>Min</th><th>Max</th><th>Status</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.service_id)+'</td><td>'+esc(s.category)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.rate)+'</td><td><b>'+money(Math.ceil(Number(s.rate)*1.75))+'</b></td><td>'+esc(s.min)+'</td><td>'+esc(s.max)+'</td><td><span class="status-active">Aktif untuk member</span></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
+let activeServices=[];
+function renderActiveServices(){
+ const query=($('#active-service-search').value||'').trim().toLowerCase();
+ const category=$('#active-service-category').value||'';
+ const rows=activeServices.filter(s=>(!category||s.platform===category)&&[s.id,s.supplier_service_id,s.platform,s.name].join(' ').toLowerCase().includes(query));
+ $('#active-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>ID Supplier</th><th>Kategori</th><th>Nama layanan</th><th>Modal / 1.000</th><th>Harga member / 1.000</th><th>Min</th><th>Max</th><th>Estimasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.id)+'</td><td>'+esc(s.supplier_service_id||'—')+'</td><td>'+esc(s.platform)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.supplier_rate)+'</td><td><b>'+money(s.rate)+'</b></td><td>'+esc(s.min_qty)+'</td><td>'+esc(s.max_qty)+'</td><td>'+esc(s.processing_time||'Belum diatur')+'</td><td>'+(s.active?'<span class="status-active">Aktif</span>':'Nonaktif')+'</td><td><button type="button" class="edit-active-service" data-id="'+esc(s.id)+'">Edit</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">Belum ada layanan aktif yang cocok dengan pencarian.</p>';
+}
+async function loadAllServices(){
+ $('#active-services-list').innerHTML='<p class="muted">Memuat daftar layanan aktif…</p>';
+ const d=await api('/admin/services');
+ activeServices=Array.isArray(d.services)?d.services:[];
+ const categories=[...new Set(activeServices.map(s=>s.platform).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
+ const previous=$('#active-service-category').value;
+ $('#active-service-category').innerHTML='<option value="">Semua kategori</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+ if(categories.includes(previous))$('#active-service-category').value=previous;
+ renderActiveServices();
 }
 async function loadSupplierCatalog(){
- $('#supplier-catalog-status').textContent='Menghubungi IndoSMM dan menyiapkan semua layanan dengan kenaikan harga 75%…';
  const button=$('#load-supplier-catalog');
  button.disabled=true;
+ $('#supplier-catalog-status').textContent='Menghubungi IndoSMM dan mengaktifkan layanan valid dengan harga jual awal +75%…';
  try{
   const sync=await api('/admin/supplier-services/activate-all',{method:'POST',body:'{}'});
-  const d=await api('/admin/supplier-services');
-  supplierCatalog=Array.isArray(d.services)?d.services:[];
-  const categories=[...new Set(supplierCatalog.map(s=>s.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
-  const previous=$('#supplier-category-filter').value;
-  $('#supplier-category-filter').innerHTML='<option value="">Semua kategori</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
-  if(categories.includes(previous))$('#supplier-category-filter').value=previous;
-  $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan diaktifkan, '+sync.skipped+' dilewati. Harga jual otomatis = modal +75%.';
-  renderSupplierCatalog();
+  $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan aktif, '+sync.skipped+' dilewati. Harga jual awal dihitung modal +75%. Edit harga dan detail di halaman Semua Layanan Aktif.';
   await loadServices();
-  toast('Berhasil menyiapkan '+sync.activated+' layanan. Semua layanan valid sudah aktif untuk member.');
+  if(!$('#admin-all-services-page').classList.contains('hidden'))await loadAllServices();
+  toast('Berhasil mengaktifkan '+sync.activated+' layanan.');
  }catch(e){
-  $('#supplier-catalog-status').textContent='Gagal menyiapkan katalog: '+e.message;
-  $('#supplier-services-list').innerHTML='<p class="muted">Periksa koneksi server dan konfigurasi API supplier di .env.</p>';
+  $('#supplier-catalog-status').textContent='Gagal memuat katalog: '+e.message;
   throw e;
- }finally{
-  button.disabled=false;
- }
+ }finally{button.disabled=false}
 }
 $('#load-supplier-catalog').addEventListener('click',()=>loadSupplierCatalog().catch(e=>toast(e.message)));
-$('#supplier-service-search').addEventListener('input',renderSupplierCatalog);
-$('#supplier-category-filter').addEventListener('change',renderSupplierCatalog);
+$('#sync').addEventListener('click',async()=>{
+ const b=$('#sync');b.disabled=true;
+ try{const d=await api('/admin/sync-supplier',{method:'POST',body:'{}'});$('#supplier-catalog-status').textContent=d.message;toast(d.message);await loadAllServices();}
+ catch(e){toast(e.message)}
+ finally{b.disabled=false}
+});
+$('#active-service-search').addEventListener('input',renderActiveServices);
+$('#active-service-category').addEventListener('change',renderActiveServices);
+$('#active-services-list').addEventListener('click',e=>{
+ const b=e.target.closest('.edit-active-service');if(!b)return;
+ const s=activeServices.find(x=>String(x.id)===b.dataset.id);if(!s)return;
+ const f=$('#edit-service-form');f.classList.remove('hidden');
+ for(const key of ['id','supplier_service_id','platform','name','description','supplier_rate','rate','min_qty','max_qty','processing_time'])f.elements[key].value=s[key]??'';
+ f.elements.active.checked=Boolean(s.active);
+ f.scrollIntoView({behavior:'smooth',block:'start'});
+});
+$('#cancel-edit-service').addEventListener('click',()=>$('#edit-service-form').classList.add('hidden'));
+$('#edit-service-form').addEventListener('submit',async e=>{
+ e.preventDefault();const f=e.currentTarget;const data=Object.fromEntries(new FormData(f));
+ data.supplier_rate=Number(data.supplier_rate);data.rate=Number(data.rate);data.min_qty=Number(data.min_qty);data.max_qty=Number(data.max_qty);data.active=f.elements.active.checked;
+ try{await api('/admin/services/'+encodeURIComponent(data.id),{method:'PATCH',body:JSON.stringify(data)});toast('Perubahan layanan berhasil disimpan.');f.classList.add('hidden');await loadAllServices();await loadServices();}
+ catch(err){toast(err.message)}
+});
 async function loadAdminSettings(){const d=await api('/admin/settings');const s=d.settings||{};$('#setting-account-name').value=s.sea_bank_account_name||'';$('#setting-account-number').value=s.sea_bank_account_number||'';$('#setting-whatsapp').value=s.admin_whatsapp_number||'';$('#admin-email').value=currentUser.email;}
 function showAdminPage(pageId){
  document.querySelectorAll('.admin-page').forEach(el=>el.classList.toggle('hidden',el.id!==pageId));
  document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('active',el.dataset.adminPage===pageId));
 }
-document.querySelectorAll('.admin-nav').forEach(btn=>btn.addEventListener('click',()=>showAdminPage(btn.dataset.adminPage)));
+document.querySelectorAll('.admin-nav').forEach(btn=>btn.addEventListener('click',()=>{showAdminPage(btn.dataset.adminPage);if(btn.dataset.adminPage==='admin-all-services-page')loadAllServices().catch(e=>toast(e.message));}));
 $('#admin-settings').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));await api('/admin/settings',{method:'PUT',body:JSON.stringify(f)});toast('Pengaturan pembayaran disimpan');await loadPaymentInfo()}catch(x){toast(x.message)}});
 $('#admin-account').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));const d=await api('/admin/account',{method:'PUT',body:JSON.stringify(f)});currentUser=d.user;$('#welcome').textContent=`Halo, ${currentUser.name} · ${currentUser.email}`;e.target.password.value='';toast('Akun admin diperbarui')}catch(x){toast(x.message)}});
 $('#toggle-login-password').addEventListener('click',()=>{
@@ -148,9 +170,7 @@ let orderMode='single';
 document.querySelectorAll('[data-order-mode]').forEach(btn=>btn.addEventListener('click',()=>{orderMode=btn.dataset.orderMode;document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x===btn));$('#single-target-label').classList.toggle('hidden',orderMode!=='single');$('#bulk-target-label').classList.toggle('hidden',orderMode!=='bulk');$('#single-target').required=orderMode==='single';$('#bulk-targets').required=orderMode==='bulk';$('#order-mode-help').textContent=orderMode==='single'?'Pesanan biasa: satu link untuk satu pesanan.':'Pesanan massal: satu layanan dan jumlah yang sama dikirim ke banyak link sekaligus (maksimal 50 link).'}));
 $('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const payload=Object.fromEntries(f);const bulk=orderMode==='bulk';const d=await api(bulk?'/orders/bulk':'/orders',{method:'POST',body:JSON.stringify(bulk?{service_id:payload.service_id,quantity:Number(payload.quantity),targets:payload.targets}:{service_id:payload.service_id,quantity:payload.quantity,target:payload.target})});toast(bulk?`Pesanan massal: ${d.count} link · Total ${money(d.charge)} · Berhasil dikirim ${d.success}`:`Order #${d.order_id} tercatat · ${money(d.charge)}`);await refresh()}catch(x){toast(x.message)}});
 
-$('#new-service').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.rate=Number(f.rate);f.supplier_rate=Number(f.supplier_rate);await api('/admin/services',{method:'POST',body:JSON.stringify(f)});toast('Layanan ditambahkan');await loadServices();await loadAdmin()}catch(x){toast(x.message)}});
 $('#admin-deposits').addEventListener('click',async e=>{const b=e.target.closest('.review-deposit');if(!b)return;const note=b.dataset.action==='reject'?(prompt('Alasan penolakan (opsional):')||'') : '';try{await api(`/admin/deposits/${b.dataset.id}/review`,{method:'PATCH',body:JSON.stringify({action:b.dataset.action,note})});toast(b.dataset.action==='approve'?'Deposit disetujui, saldo member bertambah.':'Deposit ditolak.');await refresh()}catch(x){toast(x.message)}});
-$('#sync').addEventListener('click',async()=>{try{const d=await api('/admin/sync-supplier',{method:'POST',body:'{}'});toast(d.message);await loadServices();await loadSupplierCatalog()}catch(x){toast(x.message)}});
 
 function renderAuthRoute(){
  if(currentUser)return;
