@@ -290,6 +290,13 @@ app.patch('/api/admin/deposits/:id/review', requireAuth, requireAdmin, async (re
   } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Gagal memproses deposit.' }); }
   finally { client.release(); }
 });
+app.post('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
+  const { platform,name,description='',processing_time='Estimasi mengikuti antrean supplier',supplier_service_id=null,supplier_rate=0,rate,min_qty=100,max_qty=100000 } = req.body || {};
+  if (!platform || !name || !Number.isSafeInteger(Number(rate)) || Number(rate)<0 || !Number.isSafeInteger(Number(supplier_rate)) || Number(supplier_rate)<0 || !Number.isSafeInteger(Number(min_qty)) || Number(min_qty)<1 || !Number.isSafeInteger(Number(max_qty)) || Number(max_qty)<Number(min_qty)) return res.status(400).json({ error: 'Data layanan tidak valid. Periksa harga dan batas minimum/maksimum.' });
+  const { rows } = await pool.query('INSERT INTO services(platform,name,description,processing_time,supplier_service_id,supplier_rate,rate,min_qty,max_qty) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[platform,name,String(description).slice(0,2000),String(processing_time).slice(0,120),supplier_service_id,Number(supplier_rate),Number(rate),Number(min_qty),Number(max_qty)]);
+  await audit(req.session.user.id,'service_created',{service_id:rows[0].id});
+  res.json({ service: rows[0] });
+});
 app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) => {
   try {
     const result = await supplier.listServices();
