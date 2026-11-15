@@ -88,7 +88,7 @@ body.authenticated #nav-user{display:none!important}
 #bulk-targets{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:white;resize:vertical;font:inherit}
 
 
-/* Dropdown pemilihan layanan admin */
+
 .admin-service-picker-label{display:block;font-weight:750;margin:14px 0}.admin-service-picker-label select{display:block;width:100%;margin-top:7px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:12px;color:white}.admin-service-editor{border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px;background:#0d192b}.admin-service-editor-title{display:flex;flex-direction:column;gap:3px;margin-bottom:12px}.admin-service-editor-title small,.admin-service-fields small{color:var(--muted)}.admin-service-editor label{display:block;font-size:13px;font-weight:700;margin:12px 0}.admin-service-editor input,.admin-service-editor textarea{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:white;font:inherit}.admin-service-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.admin-service-editor button{margin-top:10px}@media(max-width:520px){.admin-service-fields{grid-template-columns:1fr}}
 
-.admin-service-search{display:block;width:100%;margin:10px 0 12px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:12px;color:white;font:inherit}.admin-service-search:focus{outline:2px solid var(--blue);outline-offset:1px}
+
