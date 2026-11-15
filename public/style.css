@@ -114,3 +114,13 @@ body.authenticated #nav-user{display:none!important}
  .admin-content{width:100%}
  .admin-topbar{align-items:flex-start}
 }
+
+
+/* Filter katalog layanan supplier IndoSMM */
+.supplier-filters{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.8fr);gap:12px;margin:14px 0}
+.supplier-filters label{display:block;font-size:13px;font-weight:700}
+.supplier-filters input,.supplier-filters select{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text)}
+#supplier-services-list{max-height:65vh;overflow:auto}
+#supplier-services-list table{min-width:680px}
+#supplier-catalog-status{margin:12px 0}
+@media(max-width:560px){.supplier-filters{grid-template-columns:1fr}}
