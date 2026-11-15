@@ -417,6 +417,88 @@ app.get('/api/admin/users', requireAuth, requireAdmin, async (req,res) => {
   res.json({ users: rows });
 });
 
+app.post('/api/admin/users/reset', requireAuth, requireAdmin, async (req,res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE');
+
+    const found = await client.query(`
+      SELECT u.id,u.name,u.balance,
+        EXISTS (SELECT 1 FROM orders o WHERE o.user_id=u.id) AS has_orders,
+        EXISTS (SELECT 1 FROM deposits d WHERE d.user_id=u.id) AS has_deposits,
+        EXISTS (SELECT 1 FROM wallet_transactions w WHERE w.user_id=u.id) AS has_wallet_transactions
+      FROM users u
+      WHERE u.role='member' AND u.id<>2
+      FOR UPDATE OF u
+    `);
+
+    const removable = found.rows.filter(member =>
+      Number(member.balance) === 0 &&
+      !member.has_orders &&
+      !member.has_deposits &&
+      !member.has_wallet_transactions
+    );
+    const preserved = found.rows.filter(member => !removable.includes(member));
+    const removableIds = removable.map(member => String(member.id));
+
+    if (removableIds.length) {
+      await client.query(
+        "DELETE FROM user_sessions WHERE sess->'user'->>'id' = ANY($1::text[])",
+        [removableIds]
+      );
+      await client.query(
+        'DELETE FROM email_verifications WHERE user_id = ANY($1::bigint[])',
+        [removableIds]
+      );
+      await client.query(
+        'UPDATE audit_logs SET actor_id=NULL WHERE actor_id = ANY($1::bigint[])',
+        [removableIds]
+      );
+      const deleted = await client.query(
+        'DELETE FROM users WHERE id = ANY($1::bigint[]) AND role=$2 RETURNING id',
+        [removableIds, 'member']
+      );
+      if (deleted.rowCount !== removableIds.length) {
+        throw new Error('Jumlah akun yang dihapus tidak sesuai. Reset dibatalkan.');
+      }
+    }
+
+    await client.query(
+      "INSERT INTO audit_logs(actor_id,action,details) VALUES($1,$2,$3)",
+      [req.session.user.id, 'admin_members_reset', {
+        preserved_member_id: 2,
+        deleted_member_ids: removableIds,
+        deleted_count: removableIds.length,
+        preserved_member_ids: preserved.map(member => String(member.id))
+      }]
+    );
+
+    await client.query(`
+      SELECT setval(
+        pg_get_serial_sequence('users','id'),
+        COALESCE((SELECT MAX(id) FROM users),1),
+        EXISTS(SELECT 1 FROM users)
+      )
+    `);
+
+    await client.query('COMMIT');
+    res.json({
+      ok: true,
+      deleted_count: removableIds.length,
+      preserved_count: preserved.length + 1,
+      preserved_member_ids: preserved.map(member => String(member.id)),
+      message: 'Reset selesai. ' + removableIds.length + ' member tanpa saldo dan tanpa riwayat dihapus; ' + (preserved.length + 1) + ' akun dipertahankan (termasuk Member ID 2). Urutan ID registrasi disesuaikan.'
+    });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    console.error('Gagal reset database member:', e.message);
+    res.status(500).json({ error: 'Reset database member gagal dan perubahan dibatalkan: ' + e.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req,res) => {
   const memberId = String(req.params.id || '');
   if (!/^\d+$/.test(memberId)) return res.status(400).json({ error: 'ID member tidak valid.' });
