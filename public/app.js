@@ -72,6 +72,7 @@ function renderSelectedServiceInfo(){
    orderMode='single';
    document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x.dataset.orderMode==='single'));
  }
+ renderOrderPriceSummary();
  if(!el)return;
  if(!s){
    $('#submit-order').disabled=true;
