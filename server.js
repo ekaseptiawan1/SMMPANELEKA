@@ -32,6 +32,30 @@ async function audit(actor, action, details = {}) {
   await pool.query('INSERT INTO audit_logs(actor_id,action,details) VALUES($1,$2,$3)', [actor || null, action, details]);
 }
 
+async function refundFailedOrder(orderId, reason = 'Supplier gagal menerima pesanan') {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query('SELECT id,user_id,charge,status FROM orders WHERE id=$1 FOR UPDATE', [orderId]);
+    const order = found.rows[0];
+    if (!order || order.status !== 'supplier_error') {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    const updated = await client.query('UPDATE users SET balance=balance+$1 WHERE id=$2 RETURNING balance', [order.charge,order.user_id]);
+    if (!updated.rows[0]) throw new Error('Akun member untuk refund tidak ditemukan.');
+    await client.query("INSERT INTO wallet_transactions(user_id,type,amount,balance_after,reference,note) VALUES($1,'refund',$2,$3,$4,$5)", [order.user_id,order.charge,updated.rows[0].balance,String(order.id),'Pengembalian dana pesanan gagal: '+String(reason).slice(0,300)]);
+    await client.query("UPDATE orders SET status='refunded',updated_at=NOW() WHERE id=$1", [order.id]);
+    await client.query('COMMIT');
+    return true;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(()=>{});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 app.get('/api/health', (req,res) => res.json({ ok: true, name: 'BoostPanel API' }));
 app.post('/api/auth/register', rateLimit({ windowMs: 15*60*1000, limit: 8 }), async (req,res) => {
   try {
@@ -219,7 +243,10 @@ app.post('/api/orders', requireAuth, async (req,res) => {
       await pool.query('UPDATE orders SET supplier_order_id=$1,status=$2,updated_at=NOW() WHERE id=$3', [supplierId ? String(supplierId) : null, result.status || 'pending', order.rows[0].id]);
     } catch (err) {
       await pool.query("UPDATE orders SET status='supplier_error',updated_at=NOW() WHERE id=$1", [order.rows[0].id]);
-      await audit(req.session.user.id, 'supplier_order_error', { order_id: order.rows[0].id, service_type: type, message: err.message });
+      let refunded = false;
+      try { refunded = await refundFailedOrder(order.rows[0].id, err.message); }
+      catch (refundError) { await audit(req.session.user.id, 'supplier_order_refund_error', { order_id: order.rows[0].id, message: refundError.message }); }
+      await audit(req.session.user.id, 'supplier_order_error', { order_id: order.rows[0].id, service_type: type, message: err.message, refunded });
     }
     res.json({ order_id: order.rows[0].id, charge, quantity, service_type: type, message: 'Pesanan tercatat. Periksa status pesanan di dashboard.' });
   } catch (e) {
@@ -260,7 +287,10 @@ app.post('/api/orders/bulk', requireAuth, async (req,res) => {
       success++;
     } catch (err) {
       await pool.query("UPDATE orders SET status='supplier_error',updated_at=NOW() WHERE id=$1", [order.id]);
-      await audit(req.session.user.id, 'supplier_order_error', { order_id:order.id, message:err.message });
+      let refunded = false;
+      try { refunded = await refundFailedOrder(order.id, err.message); }
+      catch (refundError) { await audit(req.session.user.id, 'supplier_order_refund_error', { order_id:order.id, message:refundError.message }); }
+      await audit(req.session.user.id, 'supplier_order_error', { order_id:order.id, message:err.message, refunded });
       failed++;
     }
   }
