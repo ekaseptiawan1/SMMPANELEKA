@@ -159,22 +159,22 @@ app.post('/api/orders', requireAuth, async (req,res) => {
       if (type === 'package') {
         quantity = 1;
       } else if (type === 'custom_comments') {
-        const comments = String(input.comments || '').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);
+        const comments = String(input.comments || '').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
         if (!comments.length || comments.length > 10000 || comments.some(x=>x.length>500)) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Isi daftar komentar, satu komentar per baris (maksimal 500 karakter per komentar).' });
         }
         quantity = comments.length;
-        orderData = { comments: comments.join('\\n') };
+        orderData = { comments: comments.join('\n') };
       } else if (type === 'mentions') {
-        const usernames = String(input.usernames || '').split(/[\\r\\n,]+/).map(x=>x.trim()).filter(Boolean);
+        const usernames = String(input.usernames || '').split(/[\r\n,]+/).map(x=>x.trim()).filter(Boolean);
         quantity = Number(input.quantity);
         if (!usernames.length || usernames.length > 10000 || usernames.some(x=>!/^@?[A-Za-z0-9._]{1,100}$/.test(x)) ||
             !Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Isi username mention yang valid dan jumlah sesuai batas layanan.' });
         }
-        orderData = { usernames: usernames.map(x=>x.replace(/^@/, '')).join('\\n') };
+        orderData = { usernames: usernames.map(x=>x.replace(/^@/, '')).join('\n') };
       } else {
         quantity = Number(input.quantity);
         if (!Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
