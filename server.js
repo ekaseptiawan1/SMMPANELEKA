@@ -131,6 +131,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
     const s = sr.rows[0];
     if (!s) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia.' }); }
     const type = supplier.serviceOrderType(s);
+    if (type === 'unsupported') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Tipe layanan supplier ini belum didukung. Hubungi admin sebelum membuat pesanan.' }); }
     const input = req.body || {};
     let quantity = 1, target = '', orderData = {};
     const validTarget = value => {
@@ -158,7 +159,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
       if (!target) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Link target wajib diisi dan maksimal 1.000 karakter.' }); }
       if (type === 'package') {
         quantity = 1;
-      } else if (type === 'custom_comments') {
+      } else if (type === 'custom_comments' || type === 'custom_comments_package') {
         const comments = String(input.comments || '').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
         if (!comments.length || comments.length > 10000 || comments.some(x=>x.length>500)) {
           await client.query('ROLLBACK');
@@ -166,9 +167,9 @@ app.post('/api/orders', requireAuth, async (req,res) => {
         }
         quantity = comments.length;
         orderData = { comments: comments.join('\n') };
-      } else if (type === 'mentions') {
+      } else if (type === 'mentions' || type === 'mentions_custom_list') {
         const usernames = String(input.usernames || '').split(/[\r\n,]+/).map(x=>x.trim()).filter(Boolean);
-        quantity = Number(input.quantity);
+        quantity = type === 'mentions_custom_list' ? usernames.length : Number(input.quantity);
         if (!usernames.length || usernames.length > 10000 || usernames.some(x=>!/^@?[A-Za-z0-9._]{1,100}$/.test(x)) ||
             !Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
           await client.query('ROLLBACK');
@@ -201,7 +202,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
         return res.status(400).json({ error: 'Jumlah baris/username harus sesuai batas minimum dan maksimum layanan.' });
       }
     }
-    const charge = type === 'package' ? Math.ceil(Number(s.rate)) : Math.ceil(Number(s.rate) * quantity / 1000);
+    const charge = ['package','custom_comments_package'].includes(type) ? Math.ceil(Number(s.rate)) : Math.ceil(Number(s.rate) * quantity / 1000);
     if (!Number.isSafeInteger(charge) || charge < 0) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Harga layanan tidak valid.' });
