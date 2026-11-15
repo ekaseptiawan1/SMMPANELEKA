@@ -337,9 +337,38 @@ app.get('/api/admin/orders', requireAuth, requireAdmin, async (req,res) => {
   const { rows } = await pool.query('SELECT o.*,u.email,s.platform,s.name AS service_name FROM orders o JOIN users u ON u.id=o.user_id JOIN services s ON s.id=o.service_id ORDER BY o.created_at DESC LIMIT 300');
   res.json({ orders: rows });
 });
+app.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req,res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query('SELECT * FROM orders WHERE id=$1 FOR UPDATE', [req.params.id]);
+    const order = found.rows[0];
+    if (!order) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Pesanan tidak ditemukan.' }); }
+    await client.query('DELETE FROM orders WHERE id=$1', [order.id]);
+    await audit(req.session.user.id, 'admin_order_deleted', { order_id: order.id, user_id: order.user_id, supplier_order_id: order.supplier_order_id, status: order.status });
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'Data pesanan dihapus. Pesanan di supplier dan saldo member tidak berubah.' });
+  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Gagal menghapus pesanan.' }); }
+  finally { client.release(); }
+});
 app.get('/api/admin/deposits', requireAuth, requireAdmin, async (req,res) => {
   const { rows } = await pool.query('SELECT d.*,u.id AS member_id,u.name AS member_name,u.email FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 300');
   res.json({ deposits: rows });
+});
+app.delete('/api/admin/deposits/:id', requireAuth, requireAdmin, async (req,res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query('SELECT * FROM deposits WHERE id=$1 FOR UPDATE', [req.params.id]);
+    const deposit = found.rows[0];
+    if (!deposit) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Deposit tidak ditemukan.' }); }
+    if (deposit.status === 'paid') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Deposit berstatus lunas tidak dapat dihapus agar catatan keuangan tetap terjaga.' }); }
+    await client.query('DELETE FROM deposits WHERE id=$1', [deposit.id]);
+    await audit(req.session.user.id, 'admin_deposit_deleted', { deposit_id: deposit.id, user_id: deposit.user_id, amount: deposit.amount, status: deposit.status });
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'Data deposit dihapus. Saldo member tidak berubah.' });
+  } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Gagal menghapus deposit.' }); }
+  finally { client.release(); }
 });
 app.patch('/api/admin/deposits/:id/review', requireAuth, requireAdmin, async (req,res) => {
   const action = String(req.body.action || '');
