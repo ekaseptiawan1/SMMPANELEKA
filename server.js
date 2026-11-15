@@ -191,7 +191,7 @@ app.post('/api/orders', requireAuth, async (req,res) => {
           orderData = { answer_number: answerNumber };
         }
       }
-      if (type !== 'package' && type !== 'custom_comments' && type !== 'mentions' &&
+      if (!['package','custom_comments','custom_comments_package','mentions'].includes(type) &&
           (quantity < Number(s.min_qty) || quantity > Number(s.max_qty))) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Jumlah pesanan di luar batas minimum dan maksimum layanan.' });
