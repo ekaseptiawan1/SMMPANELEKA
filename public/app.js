@@ -173,7 +173,7 @@ async function loadSupplierCatalog(){
   const sync=await api('/admin/supplier-services/activate-all',{method:'POST',body:'{}'});
   $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan aktif, '+sync.skipped+' dilewati. Harga jual awal dihitung modal +75%. Edit harga dan detail di halaman Semua Layanan Aktif.';
   await loadServices();
-  if(!$('#admin-all-services-page').classList.contains('hidden'))await loadAllServices();
+  await loadAllServices();
   toast('Berhasil mengaktifkan '+sync.activated+' layanan.');
  }catch(e){
   $('#supplier-catalog-status').textContent='Gagal memuat katalog: '+e.message;
