@@ -419,7 +419,7 @@ app.get('/api/admin/users', requireAuth, requireAdmin, async (req,res) => {
 
 app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req,res) => {
   const memberId = String(req.params.id || '');
-  if (!/^\\d+$/.test(memberId)) return res.status(400).json({ error: 'ID member tidak valid.' });
+  if (!/^\d+$/.test(memberId)) return res.status(400).json({ error: 'ID member tidak valid.' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
