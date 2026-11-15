@@ -179,7 +179,7 @@ app.post('/api/deposits', requireAuth, receiveDepositProof, async (req,res) => {
     await fs.promises.writeFile(storedPath, req.file.buffer, { flag: 'wx', mode: 0o600 });
     const { rows } = await pool.query("INSERT INTO deposits(user_id,amount,payment_method,proof_reference,payment_ref,proof_file_path,proof_file_mime,proof_file_size) VALUES($1,$2,'sea_bank',$3,$4,$5,$6,$7) RETURNING id,amount,status,created_at", [req.session.user.id, amount, proof || null, `SEA-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`, storedName, mime, req.file.size]);
     const deposit = rows[0];
-    const cfg = await pool.query("SELECT value FROM app_settings WHERE key='admin_whatsapp_number'");
+    const cfg = await pool.query("SELECT value FROM app_settings WHERE key='admin_whatsapp_number'").catch(() => ({ rows: [] }));
     const waNumber = String(cfg.rows[0]?.value || '').replace(/\\D/g, '');
     let whatsapp_url = null;
     if (/^[0-9]{8,15}$/.test(waNumber)) {
