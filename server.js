@@ -180,7 +180,7 @@ app.post('/api/deposits', requireAuth, receiveDepositProof, async (req,res) => {
     const { rows } = await pool.query("INSERT INTO deposits(user_id,amount,payment_method,proof_reference,payment_ref,proof_file_path,proof_file_mime,proof_file_size) VALUES($1,$2,'sea_bank',$3,$4,$5,$6,$7) RETURNING id,amount,status,created_at", [req.session.user.id, amount, proof || null, `SEA-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`, storedName, mime, req.file.size]);
     const deposit = rows[0];
     const cfg = await pool.query("SELECT value FROM app_settings WHERE key='admin_whatsapp_number'").catch(() => ({ rows: [] }));
-    const waNumber = String(cfg.rows[0]?.value || '').replace(/\\D/g, '');
+    const waNumber = String(cfg.rows[0]?.value || '').replace(/\D/g, '');
     let whatsapp_url = null;
     if (/^[0-9]{8,15}$/.test(waNumber)) {
       const message = [
@@ -192,7 +192,7 @@ app.post('/api/deposits', requireAuth, receiveDepositProof, async (req,res) => {
         `Nominal: Rp${rupiah(deposit.amount)}`,
         `Referensi/Keterangan Transfer: ${proof || '-'}`,
         'Saya sudah mengunggah bukti di website. Saya akan melampirkan foto bukti transfer yang sama di chat ini. Mohon periksa mutasi rekening; saldo hanya ditambahkan setelah admin menyetujui.'
-      ].join('\\n');
+      ].join('\n');
       whatsapp_url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
     }
     res.json({ deposit, whatsapp_url, message: whatsapp_url ? 'Pengajuan deposit dibuat. Lanjutkan ke WhatsApp dan lampirkan foto bukti transfer.' : 'Pengajuan deposit dibuat, tetapi nomor WhatsApp admin belum diatur.' });
