@@ -125,3 +125,11 @@ body.authenticated #nav-user{display:none!important}
 #edit-service-form input[readonly]{opacity:.7}
 #edit-service-form .service-active-toggle{display:flex;align-items:center;gap:9px}
 #edit-service-form .service-active-toggle input{width:auto}
+
+
+/* Dynamic supplier order type fields */
+.order-extra-fields{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,.04)}
+.order-extra-fields label{display:block;margin:10px 0}
+.order-extra-fields textarea,.order-extra-fields input:not([type=checkbox]),.order-extra-fields select{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text);font:inherit}
+.order-extra-fields .inline-check{display:flex;align-items:center;gap:9px}
+.order-extra-fields .inline-check input{width:auto}
