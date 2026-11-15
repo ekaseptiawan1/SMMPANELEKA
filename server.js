@@ -62,7 +62,7 @@ app.get('/api/me', requireAuth, async (req,res) => {
   req.session.user = publicUser(rows[0]); res.json({ user: req.session.user });
 });
 app.get('/api/services', async (req,res) => {
-  const { rows } = await pool.query('SELECT id,platform,name,description,processing_time,delay_enabled,delay_value,delay_unit,rate,min_qty,max_qty FROM services WHERE active=true ORDER BY platform,name');
+  const { rows } = await pool.query('SELECT id,platform,name,service_type,description,processing_time,delay_enabled,delay_value,delay_unit,rate,min_qty,max_qty FROM services WHERE active=true ORDER BY platform,name');
   res.json({ services: rows });
 });
 app.get('/api/payment-info', async (req,res) => {
@@ -123,25 +123,44 @@ app.post('/api/webhooks/payment', async (req,res) => {
   finally { client.release(); }
 });
 app.post('/api/orders', requireAuth, async (req,res) => {
-  const serviceId = Number(req.body.service_id), quantity = Number(req.body.quantity), target = String(req.body.target || '').trim();
-  if (!Number.isSafeInteger(serviceId) || !Number.isSafeInteger(quantity) || !target || target.length > 1000) return res.status(400).json({ error: 'Data pesanan tidak valid.' });
+  const serviceId = Number(req.body.service_id);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const sr = await client.query('SELECT * FROM services WHERE id=$1 AND active=true FOR UPDATE', [serviceId]);
     const s = sr.rows[0];
-    if (!s || quantity < s.min_qty || quantity > s.max_qty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia atau jumlah di luar batas.' }); }
+    if (!s) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia.' }); }
+    const isSubscription = String(s.service_type || '').toLowerCase().includes('subscription');
+    let quantity, target, username, min, max;
+    if (isSubscription) {
+      username = String(req.body.username || '').trim().replace(/^@/, '');
+      min = Number(req.body.min);
+      max = Number(req.body.max);
+      if (!username || username.length > 100 || !/^[A-Za-z0-9._]+$/.test(username) ||
+          !Number.isSafeInteger(min) || !Number.isSafeInteger(max) ||
+          min < Number(s.min_qty) || max > Number(s.max_qty) || min > max) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Isi username Instagram yang valid dan pastikan minimal–maksimal sesuai batas layanan.' });
+      }
+      quantity = max;
+      target = username;
+    } else {
+      quantity = Number(req.body.quantity);
+      target = String(req.body.target || '').trim();
+      if (!Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty) || !target || target.length > 1000) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Data pesanan tidak valid atau jumlah di luar batas layanan.' });
+      }
+    }
     const charge = Math.ceil(Number(s.rate) * quantity / 1000);
     const ur = await client.query('SELECT balance FROM users WHERE id=$1 FOR UPDATE', [req.session.user.id]);
-    if (Number(ur.rows[0].balance) < charge) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Saldo tidak mencukupi. Silakan deposit.' }); }
+    if (!ur.rows[0] || Number(ur.rows[0].balance) < charge) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Saldo tidak mencukupi. Silakan deposit.' }); }
     const order = await client.query("INSERT INTO orders(user_id,service_id,target,quantity,charge,status) VALUES($1,$2,$3,$4,$5,'processing') RETURNING id", [req.session.user.id,serviceId,target,quantity,charge]);
     const newBal = await client.query('UPDATE users SET balance=balance-$1 WHERE id=$2 RETURNING balance', [charge,req.session.user.id]);
     await client.query("INSERT INTO wallet_transactions(user_id,type,amount,balance_after,reference,note) VALUES($1,'order',$2,$3,$4,'Pembayaran pesanan')", [req.session.user.id,-charge,newBal.rows[0].balance,String(order.rows[0].id)]);
     await client.query('COMMIT');
-    // Supplier call happens after durable local order and wallet debit. Failed supplier submissions
-    // are marked for admin review; do not silently re-credit without reconciliation.
     try {
-      const result = await supplier.createOrder({ service: s, target, quantity });
+      const result = await supplier.createOrder({ service: s, target, quantity, username, min, max });
       const supplierId = result.order || result.order_id || result.id;
       await pool.query('UPDATE orders SET supplier_order_id=$1,status=$2,updated_at=NOW() WHERE id=$3', [supplierId ? String(supplierId) : null, result.status || 'pending', order.rows[0].id]);
     } catch (err) {
@@ -162,7 +181,7 @@ app.post('/api/orders/bulk', requireAuth, async (req,res) => {
     await client.query('BEGIN');
     const sr = await client.query('SELECT * FROM services WHERE id=$1 AND active=true FOR UPDATE', [serviceId]);
     service = sr.rows[0];
-    if (!service || quantity < service.min_qty || quantity > service.max_qty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Layanan tidak tersedia atau jumlah di luar batas.' }); }
+    if (!service || String(service.service_type || '').toLowerCase().includes('subscription') || quantity < service.min_qty || quantity > service.max_qty) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Pesanan massal tidak tersedia untuk layanan Subscriptions atau jumlah di luar batas.' }); }
     const eachCharge = Math.ceil(Number(service.rate) * quantity / 1000);
     const totalCharge = eachCharge * targets.length;
     const ur = await client.query('SELECT balance FROM users WHERE id=$1 FOR UPDATE', [req.session.user.id]);
@@ -368,7 +387,7 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
       }
       const platform = String(item.category || item.platform || 'Other').trim().slice(0,120) || 'Other';
       byId.set(sid, [
-        sid, platform, name, Math.round(supplierRate),
+        sid, platform, name, String(item.type || 'Default').slice(0,80), Math.round(supplierRate),
         Math.ceil(supplierRate * 1.75), min, max
       ]);
     }
@@ -383,15 +402,15 @@ app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin,
       const batch = rows.slice(offset, offset + batchSize);
       const values = [];
       const placeholders = batch.map((row, index) => {
-        const base = index * 7;
+        const base = index * 8;
         values.push(...row);
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},true)`;
+        return `(${base+1},${base+2},${base+3},${base+4},${base+5},${base+6},${base+7},${base+8},true)`;
       });
-      await client.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
+      await client.query(`INSERT INTO services(supplier_service_id,platform,name,service_type,supplier_rate,rate,min_qty,max_qty,active)
         VALUES ${placeholders.join(',')}
         ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
         DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
-          rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`, values);
+          service_type=EXCLUDED.service_type,rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`, values);
     }
 
     await client.query('COMMIT');
@@ -464,7 +483,8 @@ app.post('/api/admin/orders/:id/refresh', requireAuth, requireAdmin, async (req,
 
 // Admin accounts are created with the private CLI command; no admin credentials live in environment variables.
 const port = Number(process.env.PORT || 3000);
-pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS processing_time VARCHAR(120) NOT NULL DEFAULT 'Estimasi mengikuti antrean supplier'")
+pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS service_type VARCHAR(80) NOT NULL DEFAULT 'Default'")
+  .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS processing_time VARCHAR(120) NOT NULL DEFAULT 'Estimasi mengikuti antrean supplier'"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_enabled BOOLEAN NOT NULL DEFAULT false"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_value INTEGER NOT NULL DEFAULT 1"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_unit VARCHAR(10) NOT NULL DEFAULT 'seconds'"))
