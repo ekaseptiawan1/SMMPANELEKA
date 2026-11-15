@@ -34,6 +34,7 @@ async function refresh(){
  $('#welcome').textContent=`Halo, ${currentUser.name} · ${currentUser.email}`;
  $('#balance').textContent=money(currentUser.balance);
  if(currentUser.role==='admin'){
+   showAdminPage('admin-dashboard-page');
    await loadAdmin();
  }else{
    showMemberPage('order-page');
@@ -90,6 +91,11 @@ $('#member-account').addEventListener('submit',async e=>{
 });
 async function loadAdmin(){await loadAdminSettings();const d=await api('/admin/overview');$('#admin-stats').innerHTML=[['Member',d.members],['Total order',d.orders],['Deposit pending',d.pending_deposits],['Gross sales',money(d.gross_sales)]].map(x=>`<div class="stat"><b>${x[1]}</b><span class="muted">${x[0]}</span></div>`).join('');const u=await api('/admin/users');$('#users').innerHTML=table(u.users,[['id','ID'],['name','Nama'],['email','Email'],['balance','Saldo'],['role','Role']]);const o=await api('/admin/orders');$('#admin-orders').innerHTML=table(o.orders,[['id','ID'],['email','Member'],['platform','Platform'],['service_name','Layanan'],['charge','Biaya'],['status','Status']]);const dp=await api('/admin/deposits');$('#admin-deposits').innerHTML=dp.deposits.length?'<table><thead><tr><th>ID Deposit / Member</th><th>Nominal</th><th>Bukti / Referensi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+dp.deposits.map(d=>`<tr><td>Deposit #${d.id}<br>Member #${d.member_id} — ${String(d.member_name||'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}<br>${d.email}</td><td>${money(d.amount)}</td><td>${String(d.proof_reference||'—').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]))}</td><td>${d.status}</td><td>${d.status==='pending'?`<button class="review-deposit" data-id="${d.id}" data-action="approve">Setujui</button> <button class="secondary review-deposit" data-id="${d.id}" data-action="reject">Tolak</button>`:'—'}</td></tr>`).join('')+'</tbody></table>':'<p class="muted">Belum ada deposit.</p>';}
 async function loadAdminSettings(){const d=await api('/admin/settings');const s=d.settings||{};$('#setting-account-name').value=s.sea_bank_account_name||'';$('#setting-account-number').value=s.sea_bank_account_number||'';$('#setting-whatsapp').value=s.admin_whatsapp_number||'';$('#admin-email').value=currentUser.email;}
+function showAdminPage(pageId){
+ document.querySelectorAll('.admin-page').forEach(el=>el.classList.toggle('hidden',el.id!==pageId));
+ document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('active',el.dataset.adminPage===pageId));
+}
+document.querySelectorAll('.admin-nav').forEach(btn=>btn.addEventListener('click',()=>showAdminPage(btn.dataset.adminPage)));
 $('#admin-settings').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));await api('/admin/settings',{method:'PUT',body:JSON.stringify(f)});toast('Pengaturan pembayaran disimpan');await loadPaymentInfo()}catch(x){toast(x.message)}});
 $('#admin-account').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));const d=await api('/admin/account',{method:'PUT',body:JSON.stringify(f)});currentUser=d.user;$('#welcome').textContent=`Halo, ${currentUser.name} · ${currentUser.email}`;e.target.password.value='';toast('Akun admin diperbarui')}catch(x){toast(x.message)}});
 $('#toggle-login-password').addEventListener('click',()=>{
