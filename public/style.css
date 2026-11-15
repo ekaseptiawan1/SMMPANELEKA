@@ -137,3 +137,6 @@ body.authenticated #nav-user{display:none!important}
 
 /* Status verifikasi email member */
 .verified{display:inline-block;color:#16a34a;font-weight:700}.unverified{display:inline-block;color:#d97706;font-weight:600}
+
+/* Alur deposit bertahap dan pratinjau bukti transfer */
+.deposit-panel{max-width:760px}.deposit-steps{display:flex;gap:8px;margin:12px 0 20px}.deposit-steps span{flex:1;padding:9px 7px;text-align:center;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:12px}.deposit-steps span.active{background:#263b68;border-color:#718cff;color:#fff}.deposit-summary{padding:12px;border:1px solid var(--line);border-radius:10px;margin:12px 0;font-weight:750}.deposit-actions{display:flex;justify-content:space-between;gap:10px;margin-top:16px}.deposit-proof-preview{margin:14px 0}.deposit-proof-preview img{display:block;max-width:100%;max-height:320px;object-fit:contain;border-radius:10px;border:1px solid var(--line)}.deposit-warning{padding:12px;border:1px solid #8a6932;background:#3a2b16;border-radius:10px;color:#ffdda0}.deposit-panel input[type=file]{padding:12px}.deposit-panel #deposit-step-3 a{margin:8px 8px 8px 0}@media(max-width:520px){.deposit-steps span{font-size:10px;padding:8px 3px}.deposit-actions button{flex:1}}
