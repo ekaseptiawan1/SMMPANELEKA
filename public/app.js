@@ -4,31 +4,66 @@ function toast(msg){const el=$('#message');el.textContent=msg;el.style.display='
 function table(rows,cols){if(!rows?.length)return '<p class="muted">Belum ada data.</p>';return '<table><thead><tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr></thead><tbody>'+rows.map(row=>'<tr>'+cols.map(c=>`<td>${String(row[c[0]]??'—').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}</td>`).join('')+'</tr>').join('')+'</tbody></table>'}
 async function loadPaymentInfo(){const d=await api('/payment-info');$('#bank-info').innerHTML=`<b>${d.bank}</b><br>Atas nama: ${d.account_name}<br>No. rekening: <b>${d.account_number}</b><br><small>${d.instructions}</small>`}
 function esc(v){return String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))}
+function orderServiceType(service){
+ const raw=String(service?.service_type||'Default').toLowerCase();
+ if(raw.includes('subscription'))return 'subscriptions';
+ if(raw.includes('custom')&&raw.includes('comment'))return 'custom_comments';
+ if(raw.includes('mention'))return 'mentions';
+ if(raw.includes('poll'))return 'poll';
+ if(raw.includes('package'))return 'package';
+ return 'default';
+}
 function renderSelectedServiceInfo(){
  const s=catalog.find(x=>String(x.id)===String($('#service-select').value));
  const el=$('#selected-service-info'),qty=$('#order-quantity');
- const subscription=Boolean(s&&String(s.service_type||'').toLowerCase().includes('subscription'));
- $('#subscription-username-label').classList.toggle('hidden',!subscription);
- $('#subscription-fields').classList.toggle('hidden',!subscription);
- $('#quantity-label').classList.toggle('hidden',subscription);
- $('#single-target-label').classList.toggle('hidden',subscription||orderMode==='bulk');
- $('#bulk-target-label').classList.toggle('hidden',subscription||orderMode!=='bulk');
- $('#subscription-username').required=subscription;
- $('#subscription-min').required=subscription;
- $('#subscription-max').required=subscription;
- $('#single-target').required=!subscription&&orderMode==='single';
- $('#bulk-targets').required=!subscription&&orderMode==='bulk';
- document.querySelector('[data-order-mode="bulk"]').disabled=subscription;
- if(subscription&&orderMode==='bulk'){orderMode='single';document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x.dataset.orderMode==='single'));}
- if(!el)return;
- if(!s){el.textContent='Pilih layanan terlebih dahulu.';if(qty){qty.removeAttribute('max');qty.min='1'}return}
- if(qty&&!subscription){qty.min=String(s.min_qty||1);qty.max=String(s.max_qty||'');const current=Number(qty.value||0);if(current<Number(s.min_qty||1))qty.value=s.min_qty;if(s.max_qty&&current>Number(s.max_qty))qty.value=s.max_qty;}
- if(subscription){
-   $('#subscription-min').min=String(s.min_qty||1);$('#subscription-min').max=String(s.max_qty||'');
-   $('#subscription-max').min=String(s.min_qty||1);$('#subscription-max').max=String(s.max_qty||'');
-   $('#subscription-min').value=s.min_qty;$('#subscription-max').value=s.min_qty;
+ const type=orderServiceType(s);
+ const isSubscription=type==='subscriptions';
+ const isBulk=orderMode==='bulk'&&type==='default';
+ $('#package-fields').classList.toggle('hidden',type!=='package');
+ $('#custom-comments-fields').classList.toggle('hidden',type!=='custom_comments');
+ $('#mentions-fields').classList.toggle('hidden',type!=='mentions');
+ $('#poll-fields').classList.toggle('hidden',type!=='poll');
+ $('#subscription-username-label').classList.toggle('hidden',!isSubscription);
+ $('#subscription-fields').classList.toggle('hidden',!isSubscription);
+ $('#quantity-label').classList.toggle('hidden',!['default','poll'].includes(type)||isBulk);
+ $('#single-target-label').classList.toggle('hidden',isSubscription||isBulk);
+ $('#bulk-target-label').classList.toggle('hidden',!isBulk);
+ $('#subscription-username').required=isSubscription;
+ $('#subscription-min').required=isSubscription;
+ $('#subscription-max').required=isSubscription;
+ $('#order-comments').required=type==='custom_comments';
+ $('#order-usernames').required=type==='mentions';
+ $('#poll-answer-number').required=type==='poll';
+ $('#single-target').required=!isSubscription&&!isBulk;
+ $('#bulk-targets').required=isBulk;
+ const bulkButton=document.querySelector('[data-order-mode="bulk"]');
+ bulkButton.disabled=Boolean(s&&type!=='default');
+ if(s&&type!=='default'&&orderMode==='bulk'){
+   orderMode='single';
+   document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x.dataset.orderMode==='single'));
  }
- el.innerHTML='<b>'+esc(s.platform)+' · '+esc(s.name)+'</b><br>Jenis: '+esc(s.service_type||'Default')+'<br>Harga: <b>'+money(s.rate)+'</b> per 1.000<br>Minimal: '+esc(s.min_qty)+' · Maksimal: '+esc(s.max_qty)+'<br>'+(s.delay_enabled?('Delay: '+esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik')+'<br>'):'')+'Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'<br><small>'+esc(s.description||'Deskripsi layanan belum ditambahkan admin.')+'</small>';
+ if(!el)return;
+ if(!s){
+   el.textContent='Pilih layanan terlebih dahulu.';
+   if(qty){qty.removeAttribute('max');qty.min='1'}
+   return;
+ }
+ if(qty&&['default','poll'].includes(type)){
+   qty.min=String(s.min_qty||1);qty.max=String(s.max_qty||'');
+   const current=Number(qty.value||0);
+   if(current<Number(s.min_qty||1))qty.value=s.min_qty;
+   if(s.max_qty&&current>Number(s.max_qty))qty.value=s.max_qty;
+ }
+ if(isSubscription){
+   $('#subscription-min').min=String(s.min_qty||1);
+   $('#subscription-min').max=String(s.max_qty||'');
+   $('#subscription-max').min=String(s.min_qty||1);
+   $('#subscription-max').max=String(s.max_qty||'');
+   $('#subscription-min').value=s.min_qty;
+   $('#subscription-max').value=s.min_qty;
+ }
+ const typeLabel={default:'Default',package:'Package',custom_comments:'Custom Comments',mentions:'Mentions',poll:'Poll',subscriptions:'Subscriptions'}[type];
+ el.innerHTML='<b>'+esc(s.platform)+' · '+esc(s.name)+'</b><br>Jenis: <b>'+typeLabel+'</b><br>Harga: <b>'+money(s.rate)+'</b>'+(type==='package'?' per paket':' per 1.000')+'<br>Minimal: '+esc(s.min_qty)+' · Maksimal: '+esc(s.max_qty)+'<br>'+(s.delay_enabled?('Delay layanan: '+esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik')+'<br>'):'')+'Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'<br><small>'+esc(s.description||'Deskripsi layanan belum ditambahkan admin.')+'</small>';
 }
 function renderOrderServiceOptions(){const category=$('#service-category').value;const select=$('#service-select');const previous=select.value;const items=catalog.filter(s=>(s.platform||'Lainnya')===category);select.innerHTML='<option value="">Pilih layanan...</option>'+items.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' — '+money(s.rate)+'/1k</option>').join('');select.disabled=!category||!items.length;if(items.some(s=>String(s.id)===previous))select.value=previous;renderSelectedServiceInfo()}
 async function loadServices(){const d=await api('/services');catalog=d.services;$('#services').innerHTML=catalog.length?catalog.map(s=>'<div class="service"><b>'+esc(s.platform)+' — '+esc(s.name)+'</b><p>'+esc(s.description||'Deskripsi layanan belum tersedia.')+'</p><small>'+money(s.rate)+' / 1.000 · Min '+s.min_qty+' · Maks '+s.max_qty+'</small><small>Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'</small></div>').join(''):'<p class="muted">Katalog belum diisi admin.</p>';const categorySelect=$('#service-category');const previousCategory=categorySelect.value;const categories=[...new Set(catalog.map(s=>s.platform||'Lainnya'))].sort((a,b)=>a.localeCompare(b,'id'));categorySelect.innerHTML='<option value="">Pilih kategori...</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if(categories.includes(previousCategory))categorySelect.value=previousCategory;else categorySelect.value='';renderOrderServiceOptions()}
@@ -195,7 +230,7 @@ $('#logout-admin').addEventListener('click',async()=>{try{await api('/auth/logou
 $('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh();showMemberPage('deposit-page')}catch(x){toast(x.message)}});
 let orderMode='single';
 document.querySelectorAll('[data-order-mode]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.disabled)return;orderMode=btn.dataset.orderMode;document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x===btn));renderSelectedServiceInfo();$('#order-mode-help').textContent=orderMode==='single'?'Pesanan biasa: satu link untuk satu pesanan.':'Pesanan massal: satu layanan dan jumlah yang sama dikirim ke banyak link sekaligus (maksimal 50 link).'}));
-$('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const payload=Object.fromEntries(f);const bulk=orderMode==='bulk';const selected=catalog.find(x=>String(x.id)===String(payload.service_id));const subscription=Boolean(selected&&String(selected.service_type||'').toLowerCase().includes('subscription'));const body=subscription?{service_id:payload.service_id,username:payload.username,min:Number(payload.subscription_min),max:Number(payload.subscription_max)}:bulk?{service_id:payload.service_id,quantity:Number(payload.quantity),targets:payload.targets}:{service_id:payload.service_id,quantity:payload.quantity,target:payload.target};const d=await api(bulk?'/orders/bulk':'/orders',{method:'POST',body:JSON.stringify(body)});toast(bulk?`Pesanan massal: ${d.count} link · Total ${money(d.charge)} · Berhasil dikirim ${d.success}`:`Order #${d.order_id} tercatat · ${money(d.charge)}`);await refresh()}catch(x){toast(x.message)}});
+$('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const p=Object.fromEntries(f);const selected=catalog.find(x=>String(x.id)===String(p.service_id));const type=orderServiceType(selected);const bulk=orderMode==='bulk'&&type==='default';let body={service_id:p.service_id};if(bulk){body={...body,quantity:Number(p.quantity),targets:p.targets}}else if(type==='subscriptions'){body={...body,username:p.username,min:Number(p.min),max:Number(p.max),posts:Number(p.posts||0),old_posts:$('#subscription-old-posts').checked,delay:Number(p.delay||0)}}else if(type==='package'){body={...body,target:p.target}}else if(type==='custom_comments'){body={...body,target:p.target,comments:p.comments}}else if(type==='mentions'){body={...body,target:p.target,usernames:p.usernames}}else if(type==='poll'){body={...body,target:p.target,quantity:Number(p.quantity),answer_number:Number(p.answer_number)}}else{body={...body,target:p.target,quantity:Number(p.quantity)}}const d=await api(bulk?'/orders/bulk':'/orders',{method:'POST',body:JSON.stringify(body)});toast(bulk?`Pesanan massal: ${d.count} link · Total ${money(d.charge)} · Berhasil dikirim ${d.success}`:`Order #${d.order_id} tercatat · ${money(d.charge)}`);e.target.reset();orderMode='single';document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x.dataset.orderMode==='single'));await loadServices();await refresh()}catch(x){toast(x.message)}});
 
 $('#admin-deposits').addEventListener('click',async e=>{const b=e.target.closest('.review-deposit');if(!b)return;const note=b.dataset.action==='reject'?(prompt('Alasan penolakan (opsional):')||'') : '';try{await api(`/admin/deposits/${b.dataset.id}/review`,{method:'PATCH',body:JSON.stringify({action:b.dataset.action,note})});toast(b.dataset.action==='approve'?'Deposit disetujui, saldo member bertambah.':'Deposit ditolak.');await refresh()}catch(x){toast(x.message)}});
 
