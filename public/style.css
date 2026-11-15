@@ -118,7 +118,7 @@ body.authenticated #nav-user{display:none!important}
 
 /* Form editor untuk katalog layanan aktif admin */
 #active-services-list{max-height:70vh;overflow:auto}
-#active-services-list table{min-width:1050px}
+#active-services-list table{min-width:1250px}
 #edit-service-form{max-width:760px;margin-top:16px}
 #edit-service-form label{display:block;margin:12px 0}
 #edit-service-form input:not([type=checkbox]),#edit-service-form textarea{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text)}
