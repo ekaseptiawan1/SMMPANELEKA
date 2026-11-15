@@ -96,42 +96,33 @@ function renderSupplierCatalog(){
  const query=($('#supplier-service-search')?.value||'').trim().toLowerCase();
  const category=$('#supplier-category-filter')?.value||'';
  const rows=supplierCatalog.filter(s=>(!category||s.category===category)&&[s.service_id,s.category,s.name].join(' ').toLowerCase().includes(query));
- const safe=v=>esc(v);
- $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Modal / 1.000</th><th>Min</th><th>Max</th><th>Harga jual member / 1.000</th><th>Aksi</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+safe(s.service_id)+'</td><td>'+safe(s.category)+'</td><td>'+safe(s.name)+'</td><td>'+money(s.rate)+'</td><td>'+safe(s.min)+'</td><td>'+safe(s.max)+'</td><td><input class="supplier-retail-price" type="number" min="1" step="1" inputmode="numeric" placeholder="Isi harga jual" data-retail-price-for="'+safe(s.service_id)+'"></td><td><button type="button" class="import-supplier-service" data-import-supplier="'+safe(s.service_id)+'">Tambah & aktifkan</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
+ $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Harga modal / 1.000</th><th>Harga jual otomatis / 1.000</th><th>Min</th><th>Max</th><th>Status</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.service_id)+'</td><td>'+esc(s.category)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.rate)+'</td><td><b>'+money(Math.ceil(Number(s.rate)*1.5))+'</b></td><td>'+esc(s.min)+'</td><td>'+esc(s.max)+'</td><td><span class="status-active">Aktif untuk member</span></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
 }
 async function loadSupplierCatalog(){
- $('#supplier-catalog-status').textContent='Menghubungi IndoSMM…';
+ $('#supplier-catalog-status').textContent='Menghubungi IndoSMM dan menyiapkan semua layanan dengan kenaikan harga 50%…';
+ const button=$('#load-supplier-catalog');
+ button.disabled=true;
  try{
+  const sync=await api('/admin/supplier-services/activate-all',{method:'POST',body:'{}'});
   const d=await api('/admin/supplier-services');
   supplierCatalog=Array.isArray(d.services)?d.services:[];
   const categories=[...new Set(supplierCatalog.map(s=>s.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id'));
   const previous=$('#supplier-category-filter').value;
   $('#supplier-category-filter').innerHTML='<option value="">Semua kategori</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
   if(categories.includes(previous))$('#supplier-category-filter').value=previous;
-  $('#supplier-catalog-status').textContent='Berhasil memuat '+supplierCatalog.length+' layanan dari IndoSMM.';
+  $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan diaktifkan, '+sync.skipped+' dilewati. Harga jual otomatis = modal +50%.';
   renderSupplierCatalog();
+  await loadServices();
+  toast('Berhasil menyiapkan '+sync.activated+' layanan. Semua layanan valid sudah aktif untuk member.');
  }catch(e){
-  $('#supplier-catalog-status').textContent='Gagal memuat katalog: '+e.message;
+  $('#supplier-catalog-status').textContent='Gagal menyiapkan katalog: '+e.message;
   $('#supplier-services-list').innerHTML='<p class="muted">Periksa koneksi server dan konfigurasi API supplier di .env.</p>';
   throw e;
+ }finally{
+  button.disabled=false;
  }
 }
 $('#load-supplier-catalog').addEventListener('click',()=>loadSupplierCatalog().catch(e=>toast(e.message)));
-$('#supplier-services-list').addEventListener('click',async e=>{
- const button=e.target.closest('.import-supplier-service');
- if(!button)return;
- const sid=button.dataset.importSupplier;
- const input=Array.from($('#supplier-services-list').querySelectorAll('[data-retail-price-for]')).find(el=>el.dataset.retailPriceFor===sid);
- const rate=Number(input?.value);
- if(!Number.isSafeInteger(rate)||rate<=0){toast('Isi harga jual member lebih dari Rp0 terlebih dahulu.');input?.focus();return}
- button.disabled=true;
- try{
-  const d=await api('/admin/supplier-services/import',{method:'POST',body:JSON.stringify({service_id:sid,rate})});
-  toast(d.message);
-  await loadServices();
- }catch(x){toast(x.message)}
- finally{button.disabled=false}
-});
 $('#supplier-service-search').addEventListener('input',renderSupplierCatalog);
 $('#supplier-category-filter').addEventListener('change',renderSupplierCatalog);
 async function loadAdminSettings(){const d=await api('/admin/settings');const s=d.settings||{};$('#setting-account-name').value=s.sea_bank_account_name||'';$('#setting-account-number').value=s.sea_bank_account_number||'';$('#setting-whatsapp').value=s.admin_whatsapp_number||'';$('#admin-email').value=currentUser.email;}
