@@ -119,7 +119,6 @@ $('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=n
 
 $('#new-service').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.rate=Number(f.rate);f.supplier_rate=Number(f.supplier_rate);await api('/admin/services',{method:'POST',body:JSON.stringify(f)});toast('Layanan ditambahkan');await loadServices();await loadAdmin()}catch(x){toast(x.message)}});
 $('#admin-deposits').addEventListener('click',async e=>{const b=e.target.closest('.review-deposit');if(!b)return;const note=b.dataset.action==='reject'?(prompt('Alasan penolakan (opsional):')||'') : '';try{await api(`/admin/deposits/${b.dataset.id}/review`,{method:'PATCH',body:JSON.stringify({action:b.dataset.action,note})});toast(b.dataset.action==='approve'?'Deposit disetujui, saldo member bertambah.':'Deposit ditolak.');await refresh()}catch(x){toast(x.message)}});
-$('#admin-services').addEventListener('input',e=>{if(e.target.id==='admin-service-search'){const q=e.target.value.trim().toLocaleLowerCase();$('#admin-service-select')?.querySelectorAll('option').forEach(o=>{o.hidden=!!q&&!o.textContent.toLocaleLowerCase().includes(q)});}});
 $('#sync').addEventListener('click',async()=>{try{const d=await api('/admin/sync-supplier',{method:'POST',body:'{}'});toast(d.message);await loadServices()}catch(x){toast(x.message)}});
 
 function renderAuthRoute(){
