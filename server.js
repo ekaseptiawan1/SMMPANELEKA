@@ -7,6 +7,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const pool = require('./lib/db');
 const payment = require('./lib/payment');
 const supplier = require('./lib/supplier');
@@ -25,6 +27,22 @@ app.use(session({
 }));
 app.use('/api', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+const proofDirectory = path.join(__dirname, 'storage', 'deposit-proofs');
+fs.mkdirSync(proofDirectory, { recursive: true });
+const proofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
+function receiveDepositProof(req, res, next) {
+  proofUpload.single('proof')(req, res, err => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Ukuran bukti maksimal 5 MB.' : 'File bukti tidak valid atau terlalu besar.' });
+    next();
+  });
+}
+function detectProofMime(buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length >= 8 && buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
+  if (buffer.length >= 12 && buffer.toString('ascii',0,4) === 'RIFF' && buffer.toString('ascii',8,12) === 'WEBP') return 'image/webp';
+  return null;
+}
 
 const rupiah = n => Number(n).toLocaleString('id-ID');
 const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, balance: Number(u.balance), email_verified: u.email_verified === true });
@@ -144,18 +162,25 @@ app.get('/api/services', async (req,res) => {
 app.get('/api/payment-info', async (req,res) => {
   const { rows } = await pool.query("SELECT key,value FROM app_settings WHERE key = ANY($1)", [['sea_bank_account_name','sea_bank_account_number','admin_whatsapp_number']]);
   const settings = Object.fromEntries(rows.map(x => [x.key,x.value]));
-  res.json({ bank: 'SEA BANK', account_name: settings.sea_bank_account_name || 'Rekening belum diatur admin', account_number: settings.sea_bank_account_number || 'Belum diatur', instructions: 'Transfer sesuai nominal, lalu isi nomor referensi/keterangan transfer. Setelah mengirim permintaan, lanjutkan ke WhatsApp admin. Saldo masuk setelah admin memeriksa dan menyetujui.', whatsapp_configured: /^[0-9]{8,15}$/.test(settings.admin_whatsapp_number || '') });
+  res.json({ bank: 'SEA BANK', account_name: settings.sea_bank_account_name || 'Rekening belum diatur admin', account_number: settings.sea_bank_account_number || 'Belum diatur', instructions: 'Transfer sesuai nominal ke rekening SeaBank berikut. Unggah bukti transfer asli. Setelah pengajuan dibuat, lanjutkan ke WhatsApp admin dan lampirkan kembali foto bukti yang sama.', whatsapp_configured: /^[0-9]{8,15}$/.test(settings.admin_whatsapp_number || '') });
 });
-app.post('/api/deposits', requireAuth, async (req,res) => {
+app.post('/api/deposits', requireAuth, receiveDepositProof, async (req,res) => {
   const amount = Number(req.body.amount);
   const proof = String(req.body.proof_reference || '').trim();
   if (!Number.isSafeInteger(amount) || amount < 10000 || amount > 50000000) return res.status(400).json({ error: 'Deposit minimal Rp10.000 dan maksimal Rp50.000.000.' });
-  if (proof.length < 4 || proof.length > 120) return res.status(400).json({ error: 'Isi nomor referensi atau keterangan transfer (4–120 karakter).' });
+  if (proof.length > 120) return res.status(400).json({ error: 'Keterangan transfer maksimal 120 karakter.' });
+  if (!req.file) return res.status(400).json({ error: 'Unggah foto bukti transfer terlebih dahulu.' });
+  const mime = detectProofMime(req.file.buffer);
+  if (!mime) return res.status(400).json({ error: 'Bukti harus berupa gambar JPG, PNG, atau WebP yang valid.' });
+  const ext = mime === 'image/jpeg' ? '.jpg' : mime === 'image/png' ? '.png' : '.webp';
+  const storedName = crypto.randomUUID() + ext;
+  const storedPath = path.join(proofDirectory, storedName);
   try {
-    const { rows } = await pool.query("INSERT INTO deposits(user_id,amount,payment_method,proof_reference,payment_ref) VALUES($1,$2,'bank_transfer',$3,$4) RETURNING id,amount,status,created_at", [req.session.user.id, amount, proof, `SEA-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`]);
+    await fs.promises.writeFile(storedPath, req.file.buffer, { flag: 'wx', mode: 0o600 });
+    const { rows } = await pool.query("INSERT INTO deposits(user_id,amount,payment_method,proof_reference,payment_ref,proof_file_path,proof_file_mime,proof_file_size) VALUES($1,$2,'sea_bank',$3,$4,$5,$6,$7) RETURNING id,amount,status,created_at", [req.session.user.id, amount, proof || null, `SEA-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`, storedName, mime, req.file.size]);
     const deposit = rows[0];
     const cfg = await pool.query("SELECT value FROM app_settings WHERE key='admin_whatsapp_number'");
-    const waNumber = String(cfg.rows[0]?.value || '').replace(/\D/g, '');
+    const waNumber = String(cfg.rows[0]?.value || '').replace(/\\D/g, '');
     let whatsapp_url = null;
     if (/^[0-9]{8,15}$/.test(waNumber)) {
       const message = [
@@ -165,13 +190,17 @@ app.post('/api/deposits', requireAuth, async (req,res) => {
         `Nama Member: ${req.session.user.name}`,
         `Email Member: ${req.session.user.email}`,
         `Nominal: Rp${rupiah(deposit.amount)}`,
-        `Referensi/Keterangan Transfer: ${proof}`,
-        'Mohon periksa transfer saya. Saya memahami saldo ditambahkan setelah admin memverifikasi mutasi rekening.'
-      ].join('\n');
+        `Referensi/Keterangan Transfer: ${proof || '-'}`,
+        'Saya sudah mengunggah bukti di website. Saya akan melampirkan foto bukti transfer yang sama di chat ini. Mohon periksa mutasi rekening; saldo hanya ditambahkan setelah admin menyetujui.'
+      ].join('\\n');
       whatsapp_url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
     }
-    res.json({ deposit, whatsapp_url, message: whatsapp_url ? 'Permintaan deposit dibuat. Kamu akan diarahkan ke WhatsApp admin untuk mengirim konfirmasi.' : 'Permintaan deposit dibuat, tetapi nomor WhatsApp admin belum dikonfigurasi. Hubungi admin secara manual.' });
-  } catch (e) { res.status(500).json({ error: 'Gagal membuat permintaan deposit.' }); }
+    res.json({ deposit, whatsapp_url, message: whatsapp_url ? 'Pengajuan deposit dibuat. Lanjutkan ke WhatsApp dan lampirkan foto bukti transfer.' : 'Pengajuan deposit dibuat, tetapi nomor WhatsApp admin belum diatur.' });
+  } catch (e) {
+    await fs.promises.unlink(storedPath).catch(()=>{});
+    console.error('Gagal membuat deposit:', e.message);
+    res.status(500).json({ error: 'Gagal membuat permintaan deposit.' });
+  }
 });
 app.post('/api/webhooks/payment', async (req,res) => {
   const signature = req.get('x-webhook-signature') || '';
@@ -352,7 +381,7 @@ app.get('/api/member/summary', requireAuth, async (req,res) => {
   const id = req.session.user.id;
   const [orders,deposits,tx] = await Promise.all([
     pool.query('SELECT o.id,o.target,o.quantity,o.charge,o.status,o.created_at,s.platform,s.name AS service_name FROM orders o JOIN services s ON s.id=o.service_id WHERE o.user_id=$1 ORDER BY o.created_at DESC LIMIT 30',[id]),
-    pool.query('SELECT id,amount,status,payment_url,created_at FROM deposits WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20',[id]),
+    pool.query('SELECT id,amount,status,payment_url,(proof_file_path IS NOT NULL) AS has_proof,created_at FROM deposits WHERE user_id=$1 ORDER BY created_at DESC LIMIT 20',[id]),
     pool.query('SELECT type,amount,balance_after,reference,note,created_at FROM wallet_transactions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 30',[id])
   ]);
   res.json({ orders: orders.rows, deposits: deposits.rows, transactions: tx.rows });
@@ -548,6 +577,18 @@ app.delete('/api/admin/orders/:id', requireAuth, requireAdmin, async (req,res) =
   } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Gagal menghapus pesanan.' }); }
   finally { client.release(); }
 });
+app.get('/api/admin/deposits/:id/proof', requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const { rows } = await pool.query('SELECT proof_file_path,proof_file_mime FROM deposits WHERE id=$1',[req.params.id]);
+    if (!rows[0] || !rows[0].proof_file_path) return res.status(404).json({ error: 'Bukti transfer tidak ditemukan.' });
+    const filePath = path.join(proofDirectory, path.basename(rows[0].proof_file_path));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File bukti transfer tidak tersedia di server.' });
+    res.setHeader('Content-Type', rows[0].proof_file_mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'inline; filename="bukti-deposit-'+String(req.params.id).replace(/[^0-9]/g,'')+'"');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(filePath);
+  } catch (e) { res.status(500).json({ error: 'Gagal membuka bukti transfer.' }); }
+});
 app.get('/api/admin/deposits', requireAuth, requireAdmin, async (req,res) => {
   const { rows } = await pool.query('SELECT d.*,u.id AS member_id,u.name AS member_name,u.email FROM deposits d JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 300');
   res.json({ deposits: rows });
@@ -561,6 +602,7 @@ app.delete('/api/admin/deposits/:id', requireAuth, requireAdmin, async (req,res)
     if (!deposit) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Deposit tidak ditemukan.' }); }
     if (deposit.status === 'paid') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Deposit berstatus lunas tidak dapat dihapus agar catatan keuangan tetap terjaga.' }); }
     await client.query('DELETE FROM deposits WHERE id=$1', [deposit.id]);
+    if (deposit.proof_file_path) await fs.promises.unlink(path.join(proofDirectory,path.basename(deposit.proof_file_path))).catch(()=>{});
     await audit(req.session.user.id, 'admin_deposit_deleted', { deposit_id: deposit.id, user_id: deposit.user_id, amount: deposit.amount, status: deposit.status });
     await client.query('COMMIT');
     res.json({ ok: true, message: 'Data deposit dihapus. Saldo member tidak berubah.' });
@@ -775,6 +817,9 @@ pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS service_type VARCHAR(8
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_value INTEGER NOT NULL DEFAULT 1"))
   .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_unit VARCHAR(10) NOT NULL DEFAULT 'seconds'"))
   .then(() => pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
+  .then(() => pool.query('ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_path TEXT'))
+  .then(() => pool.query('ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_mime TEXT'))
+  .then(() => pool.query('ALTER TABLE deposits ADD COLUMN IF NOT EXISTS proof_file_size BIGINT'))
   .then(() => pool.query('CREATE TABLE IF NOT EXISTS email_verifications (user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, code_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())'))
   .then(() => app.listen(port, () => console.log(`BoostPanel berjalan pada port ${port}`)))
   .catch(err => { console.error('Gagal menyiapkan kolom detail layanan:', err.message); process.exit(1); });
