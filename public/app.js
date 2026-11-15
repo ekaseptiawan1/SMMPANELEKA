@@ -55,7 +55,7 @@ function renderSelectedServiceInfo(){
    if(qty){qty.removeAttribute('max');qty.min='1'}
    return;
  }
- if(qty&&['default','poll'].includes(type)){
+ if(qty&&['default','poll','mentions'].includes(type)){
    qty.min=String(s.min_qty||1);qty.max=String(s.max_qty||'');
    const current=Number(qty.value||0);
    if(current<Number(s.min_qty||1))qty.value=s.min_qty;
@@ -70,7 +70,7 @@ function renderSelectedServiceInfo(){
    $('#subscription-max').value=s.min_qty;
  }
  const typeLabel={default:'Default',package:'Package',custom_comments:'Custom Comments',custom_comments_package:'Custom Comments Package',mentions:'Mentions',mentions_custom_list:'Mentions Custom List',poll:'Poll',subscriptions:'Subscriptions',unsupported:'Belum didukung'}[type];
- el.innerHTML='<b>'+esc(s.platform)+' · '+esc(s.name)+'</b><br>Jenis: <b>'+typeLabel+'</b>'+(type==='unsupported'?'<br>Tipe ini belum didukung sehingga tombol pesanan dinonaktifkan.':'')+'<br>Harga: <b>'+money(s.rate)+'</b>'+(type==='package'?' per paket':' per 1.000')+'<br>Minimal: '+esc(s.min_qty)+' · Maksimal: '+esc(s.max_qty)+'<br>'+(s.delay_enabled?('Delay layanan: '+esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik')+'<br>'):'')+'Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'<br><small>'+esc(s.description||'Deskripsi layanan belum ditambahkan admin.')+'</small>';
+ el.innerHTML='<b>'+esc(s.platform)+' · '+esc(s.name)+'</b><br>Jenis: <b>'+typeLabel+'</b>'+(type==='unsupported'?'<br>Tipe ini belum didukung sehingga tombol pesanan dinonaktifkan.':'')+'<br>Harga: <b>'+money(s.rate)+'</b>'+(['package','custom_comments_package'].includes(type)?' per paket':' per 1.000')+'<br>Minimal: '+esc(s.min_qty)+' · Maksimal: '+esc(s.max_qty)+'<br>'+(s.delay_enabled?('Delay layanan: '+esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik')+'<br>'):'')+'Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'<br><small>'+esc(s.description||'Deskripsi layanan belum ditambahkan admin.')+'</small>';
 }
 function renderOrderServiceOptions(){const category=$('#service-category').value;const select=$('#service-select');const previous=select.value;const items=catalog.filter(s=>(s.platform||'Lainnya')===category);select.innerHTML='<option value="">Pilih layanan...</option>'+items.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' — '+money(s.rate)+'/1k</option>').join('');select.disabled=!category||!items.length;if(items.some(s=>String(s.id)===previous))select.value=previous;renderSelectedServiceInfo()}
 async function loadServices(){const d=await api('/services');catalog=d.services;$('#services').innerHTML=catalog.length?catalog.map(s=>'<div class="service"><b>'+esc(s.platform)+' — '+esc(s.name)+'</b><p>'+esc(s.description||'Deskripsi layanan belum tersedia.')+'</p><small>'+money(s.rate)+' / 1.000 · Min '+s.min_qty+' · Maks '+s.max_qty+'</small><small>Estimasi proses: '+esc(s.processing_time||'Mengikuti antrean supplier')+'</small></div>').join(''):'<p class="muted">Katalog belum diisi admin.</p>';const categorySelect=$('#service-category');const previousCategory=categorySelect.value;const categories=[...new Set(catalog.map(s=>s.platform||'Lainnya'))].sort((a,b)=>a.localeCompare(b,'id'));categorySelect.innerHTML='<option value="">Pilih kategori...</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if(categories.includes(previousCategory))categorySelect.value=previousCategory;else categorySelect.value='';renderOrderServiceOptions()}
