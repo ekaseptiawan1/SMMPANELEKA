@@ -364,7 +364,7 @@ app.patch('/api/admin/deposits/:id/review', requireAuth, requireAdmin, async (re
 });
 app.get('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
   try {
-    const { rows } = await pool.query('SELECT id,supplier_service_id,platform,name,description,processing_time,delay_enabled,delay_value,delay_unit,supplier_rate,rate,min_qty,max_qty,active,updated_at FROM services WHERE active=true ORDER BY platform,name');
+    const { rows } = await pool.query('SELECT id,supplier_service_id,platform,name,service_type,description,processing_time,delay_enabled,delay_value,delay_unit,supplier_rate,rate,min_qty,max_qty,active,updated_at FROM services WHERE active=true ORDER BY platform,name');
     res.json({ services: rows });
   } catch (e) { res.status(500).json({ error: 'Gagal mengambil daftar layanan aktif.' }); }
 });
@@ -409,6 +409,7 @@ app.get('/api/admin/supplier-services', requireAuth, requireAdmin, async (req,re
     const list = Array.isArray(result) ? result : (result.services || result.data || []);
     const services = list.map(x => ({
       service_id: String(x.service || x.id || x.service_id || ''),
+      type: String(x.type || 'Default'),
       category: String(x.category || x.platform || 'Other'),
       name: String(x.name || x.description || ''),
       rate: Math.max(0,Math.round(Number(x.rate ?? x.price ?? 0))),
