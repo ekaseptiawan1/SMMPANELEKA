@@ -27,7 +27,7 @@ app.use('/api', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: tr
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rupiah = n => Number(n).toLocaleString('id-ID');
-const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, balance: Number(u.balance) });
+const publicUser = u => ({ id: u.id, name: u.name, email: u.email, role: u.role, balance: Number(u.balance), email_verified: u.email_verified === true });
 async function audit(actor, action, details = {}) {
   await pool.query('INSERT INTO audit_logs(actor_id,action,details) VALUES($1,$2,$3)', [actor || null, action, details]);
 }
@@ -133,7 +133,7 @@ app.post('/api/auth/login', rateLimit({ windowMs: 15*60*1000, limit: 10 }), asyn
 });
 app.post('/api/auth/logout', (req,res) => req.session.destroy(() => { res.clearCookie('boostpanel.sid'); res.json({ ok: true }); }));
 app.get('/api/me', requireAuth, async (req,res) => {
-  const { rows } = await pool.query('SELECT id,name,email,role,balance FROM users WHERE id=$1', [req.session.user.id]);
+  const { rows } = await pool.query('SELECT id,name,email,role,balance,email_verified FROM users WHERE id=$1', [req.session.user.id]);
   if (!rows[0]) return res.status(401).json({ error: 'Sesi tidak valid.' });
   req.session.user = publicUser(rows[0]); res.json({ user: req.session.user });
 });
@@ -413,7 +413,7 @@ app.get('/api/admin/overview', requireAuth, requireAdmin, async (req,res) => {
   res.json({ members: users.rows[0].total, orders: orders.rows[0].total, pending_deposits: deposits.rows[0].total, gross_sales: Number(revenue.rows[0].total) });
 });
 app.get('/api/admin/users', requireAuth, requireAdmin, async (req,res) => {
-  const { rows } = await pool.query('SELECT id,name,email,role,balance,is_active,created_at FROM users ORDER BY created_at DESC LIMIT 200');
+  const { rows } = await pool.query('SELECT id,name,email,role,balance,email_verified,is_active,created_at FROM users ORDER BY created_at DESC LIMIT 200');
   res.json({ users: rows });
 });
 
