@@ -62,7 +62,7 @@ app.get('/api/me', requireAuth, async (req,res) => {
   req.session.user = publicUser(rows[0]); res.json({ user: req.session.user });
 });
 app.get('/api/services', async (req,res) => {
-  const { rows } = await pool.query('SELECT id,platform,name,description,processing_time,rate,min_qty,max_qty FROM services WHERE active=true ORDER BY platform,name');
+  const { rows } = await pool.query('SELECT id,platform,name,description,processing_time,delay_enabled,delay_value,delay_unit,rate,min_qty,max_qty FROM services WHERE active=true ORDER BY platform,name');
   res.json({ services: rows });
 });
 app.get('/api/payment-info', async (req,res) => {
@@ -292,7 +292,7 @@ app.patch('/api/admin/deposits/:id/review', requireAuth, requireAdmin, async (re
 });
 app.get('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
   try {
-    const { rows } = await pool.query('SELECT id,supplier_service_id,platform,name,description,processing_time,supplier_rate,rate,min_qty,max_qty,active,updated_at FROM services WHERE active=true ORDER BY platform,name');
+    const { rows } = await pool.query('SELECT id,supplier_service_id,platform,name,description,processing_time,delay_enabled,delay_value,delay_unit,supplier_rate,rate,min_qty,max_qty,active,updated_at FROM services WHERE active=true ORDER BY platform,name');
     res.json({ services: rows });
   } catch (e) { res.status(500).json({ error: 'Gagal mengambil daftar layanan aktif.' }); }
 });
@@ -307,19 +307,24 @@ app.patch('/api/admin/services/:id', requireAuth, requireAdmin, async (req,res) 
   const minQty = Number(b.min_qty);
   const maxQty = Number(b.max_qty);
   const active = b.active === true;
+  const delayEnabled = b.delay_enabled === true;
+  const delayValue = Number(b.delay_value);
+  const delayUnit = String(b.delay_unit || 'seconds');
   if (!platform || platform.length > 120 || !name || name.length > 200 ||
       description.length > 2000 || processingTime.length > 120 ||
       !Number.isSafeInteger(supplierRate) || supplierRate < 0 ||
       !Number.isSafeInteger(rate) || rate < 0 ||
       !Number.isSafeInteger(minQty) || minQty < 1 ||
       !Number.isSafeInteger(maxQty) || maxQty < minQty ||
-      typeof b.active !== 'boolean') {
+      typeof b.active !== 'boolean' || typeof b.delay_enabled !== 'boolean' ||
+      !Number.isSafeInteger(delayValue) || delayValue < 1 || delayValue > 86400 ||
+      !['seconds','minutes'].includes(delayUnit)) {
     return res.status(400).json({ error: 'Periksa kategori, nama, deskripsi, estimasi, harga, batas minimum/maksimum, dan status layanan.' });
   }
   try {
     const { rows } = await pool.query(
-      'UPDATE services SET platform=$1,name=$2,description=$3,processing_time=$4,supplier_rate=$5,rate=$6,min_qty=$7,max_qty=$8,active=$9,updated_at=NOW() WHERE id=$10 RETURNING id,supplier_service_id,platform,name,description,processing_time,supplier_rate,rate,min_qty,max_qty,active,updated_at',
-      [platform,name,description,processingTime,supplierRate,rate,minQty,maxQty,active,req.params.id]
+      'UPDATE services SET platform=$1,name=$2,description=$3,processing_time=$4,delay_enabled=$5,delay_value=$6,delay_unit=$7,supplier_rate=$8,rate=$9,min_qty=$10,max_qty=$11,active=$12,updated_at=NOW() WHERE id=$13 RETURNING id,supplier_service_id,platform,name,description,processing_time,delay_enabled,delay_value,delay_unit,supplier_rate,rate,min_qty,max_qty,active,updated_at',
+      [platform,name,description,processingTime,delayEnabled,delayValue,delayUnit,supplierRate,rate,minQty,maxQty,active,req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Layanan tidak ditemukan.' });
     await audit(req.session.user.id,'service_updated',{service_id:rows[0].id,active});
@@ -460,5 +465,8 @@ app.post('/api/admin/orders/:id/refresh', requireAuth, requireAdmin, async (req,
 // Admin accounts are created with the private CLI command; no admin credentials live in environment variables.
 const port = Number(process.env.PORT || 3000);
 pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS processing_time VARCHAR(120) NOT NULL DEFAULT 'Estimasi mengikuti antrean supplier'")
+  .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_enabled BOOLEAN NOT NULL DEFAULT false"))
+  .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_value INTEGER NOT NULL DEFAULT 1"))
+  .then(() => pool.query("ALTER TABLE services ADD COLUMN IF NOT EXISTS delay_unit VARCHAR(10) NOT NULL DEFAULT 'seconds'"))
   .then(() => app.listen(port, () => console.log(`BoostPanel berjalan pada port ${port}`)))
   .catch(err => { console.error('Gagal menyiapkan kolom detail layanan:', err.message); process.exit(1); });
