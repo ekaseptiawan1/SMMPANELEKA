@@ -89,3 +89,28 @@ body.authenticated #nav-user{display:none!important}
 
 
 
+
+
+/* Panel admin dengan navigasi dan halaman terpisah */
+.admin-shell{padding-top:28px}
+.admin-topbar{margin-bottom:18px}
+.admin-topbar h2{margin-bottom:2px}
+.admin-layout{display:grid;grid-template-columns:225px minmax(0,1fr);gap:18px;align-items:start}
+.admin-sidebar{position:sticky;top:88px;display:flex;flex-direction:column;gap:7px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+.admin-nav{width:100%;text-align:left;background:transparent;color:#c8d5ea;border:1px solid transparent;padding:11px 12px;font-size:13px}
+.admin-nav:hover{background:#1b2b45}
+.admin-nav.active{background:#263b68;border-color:#536da6;color:#fff}
+.admin-content{min-width:0}
+.admin-page{min-width:0}
+.admin-page>h3{margin:2px 0 4px}
+.admin-page>.panel{margin-bottom:16px}
+.admin-form{max-width:760px}
+.admin-form textarea{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:white;resize:vertical;font:inherit}
+.admin-form button{margin-top:5px}
+@media(max-width:760px){
+ .admin-layout{grid-template-columns:1fr;gap:12px}
+ .admin-sidebar{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+ .admin-nav{font-size:12px;padding:10px 8px;text-align:center}
+ .admin-content{width:100%}
+ .admin-topbar{align-items:flex-start}
+}
