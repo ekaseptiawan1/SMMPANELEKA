@@ -148,7 +148,7 @@ function renderActiveServices(){
  const query=($('#active-service-search').value||'').trim().toLowerCase();
  const category=$('#active-service-category').value||'';
  const rows=activeServices.filter(s=>(!category||s.platform===category)&&[s.id,s.supplier_service_id,s.platform,s.name].join(' ').toLowerCase().includes(query));
- $('#active-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>ID Supplier</th><th>Kategori</th><th>Nama layanan</th><th>Modal / 1.000</th><th>Harga member / 1.000</th><th>Min</th><th>Max</th><th>Delay</th><th>Estimasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.id)+'</td><td>'+esc(s.supplier_service_id||'—')+'</td><td>'+esc(s.platform)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.supplier_rate)+'</td><td><b>'+money(s.rate)+'</b></td><td>'+esc(s.min_qty)+'</td><td>'+esc(s.max_qty)+'</td><td>'+(s.delay_enabled?esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik'):'Nonaktif')+'</td><td>'+esc(s.processing_time||'Belum diatur')+'</td><td>'+(s.active?'<span class="status-active">Aktif</span>':'Nonaktif')+'</td><td><button type="button" class="edit-active-service" data-id="'+esc(s.id)+'">Edit</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">Belum ada layanan aktif yang cocok dengan pencarian.</p>';
+ $('#active-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>ID Supplier</th><th>Kategori</th><th>Nama layanan</th><th>Modal / 1.000</th><th>Harga member / 1.000</th><th>Min</th><th>Max</th><th>Delay</th><th>Estimasi</th><th>Status</th><th>Aksi</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.id)+'</td><td>'+esc(s.supplier_service_id||'—')+'</td><td>'+esc(s.platform)+'</td><td>'+esc(s.service_type||'Default')+'</td><td>'+esc(s.name)+'</td><td>'+money(s.supplier_rate)+'</td><td><b>'+money(s.rate)+'</b></td><td>'+esc(s.min_qty)+'</td><td>'+esc(s.max_qty)+'</td><td>'+(s.delay_enabled?esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik'):'Nonaktif')+'</td><td>'+esc(s.processing_time||'Belum diatur')+'</td><td>'+(s.active?'<span class="status-active">Aktif</span>':'Nonaktif')+'</td><td><button type="button" class="edit-active-service" data-id="'+esc(s.id)+'">Edit</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">Belum ada layanan aktif yang cocok dengan pencarian.</p>';
 }
 async function loadAllServices(){
  $('#active-services-list').innerHTML='<p class="muted">Memuat daftar layanan aktif…</p>';
@@ -188,7 +188,7 @@ $('#active-services-list').addEventListener('click',e=>{
  const b=e.target.closest('.edit-active-service');if(!b)return;
  const s=activeServices.find(x=>String(x.id)===b.dataset.id);if(!s)return;
  const f=$('#edit-service-form');f.classList.remove('hidden');
- for(const key of ['id','supplier_service_id','platform','name','description','supplier_rate','rate','min_qty','max_qty','processing_time','delay_value','delay_unit'])f.elements[key].value=s[key]??(key==='delay_value'?1:'');
+ for(const key of ['id','supplier_service_id','platform','service_type','name','description','supplier_rate','rate','min_qty','max_qty','processing_time','delay_value','delay_unit'])f.elements[key].value=s[key]??(key==='delay_value'?1:'');
  f.elements.delay_enabled.checked=Boolean(s.delay_enabled);f.elements.active.checked=Boolean(s.active);toggleDelayFields();
  f.scrollIntoView({behavior:'smooth',block:'start'});
 });
