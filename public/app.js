@@ -261,8 +261,9 @@ $('#toggle-register-password').addEventListener('click',()=>{
  button.setAttribute('aria-pressed',String(visible));
 });
 $('#login').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/login',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await refresh();toast('Berhasil login')}catch(x){toast(x.message)}});
-$('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);await api('/auth/register',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});await api('/auth/logout',{method:'POST'});e.target.reset();currentUser=null;location.hash='login';renderAuthRoute();toast('Registrasi berhasil. Silakan login dengan akun baru.')}catch(x){toast(x.message)}});
-
+$('#register').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));const d=await api('/auth/register',{method:'POST',body:JSON.stringify(f)});$('#verify-email').elements.email.value=d.email||f.email;$('#verify-email').elements.code.value='';e.target.reset();location.hash='verify-email';renderAuthRoute();toast(d.message||'Periksa Gmail untuk kode verifikasi.')}catch(x){toast(x.message);if(x.message.includes('email belum berhasil dikirim')){const f=new FormData(e.target);$('#verify-email').elements.email.value=f.get('email');location.hash='verify-email';renderAuthRoute();}}});
+$('#verify-email').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));await api('/auth/verify-email',{method:'POST',body:JSON.stringify(f)});e.target.elements.code.value='';location.hash='login';renderAuthRoute();toast('Email berhasil diverifikasi. Silakan login.')}catch(x){toast(x.message)}});
+$('#resend-verification').addEventListener('click',async()=>{const email=$('#verify-email').elements.email.value.trim();try{const d=await api('/auth/resend-verification',{method:'POST',body:JSON.stringify({email})});toast(d.message)}catch(x){toast(x.message)}});
 $('#logout-admin').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(x){toast(x.message)}});
 $('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh();showMemberPage('deposit-page')}catch(x){toast(x.message)}});
 ['order-quantity','order-comments','order-usernames','subscription-min','subscription-posts','bulk-targets'].forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('input',renderOrderPriceSummary)});
@@ -287,11 +288,13 @@ function renderAuthRoute(){
  const route=location.hash;
  const isLogin=route==='#login';
  const isRegister=route==='#register';
- document.body.classList.toggle('auth-view',isLogin||isRegister);
- $('#auth-entry').classList.toggle('hidden',!(isLogin||isRegister));
+ const isVerify=route==='#verify-email';
+ document.body.classList.toggle('auth-view',isLogin||isRegister||isVerify);
+ $('#auth-entry').classList.toggle('hidden',!(isLogin||isRegister||isVerify));
  $('#login').classList.toggle('hidden',!isLogin);
  $('#register').classList.toggle('hidden',!isRegister);
- $('#auth-title').textContent=isLogin?'Masuk ke akun':'Daftar member baru';
+ $('#verify-email').classList.toggle('hidden',!isVerify);
+ $('#auth-title').textContent=isLogin?'Masuk ke akun':isVerify?'Verifikasi email':'Daftar member baru';
 }
 window.addEventListener('hashchange',renderAuthRoute);
 
