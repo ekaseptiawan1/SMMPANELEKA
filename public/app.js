@@ -96,7 +96,7 @@ function renderSupplierCatalog(){
  const category=$('#supplier-category-filter')?.value||'';
  const rows=supplierCatalog.filter(s=>(!category||s.category===category)&&[s.service_id,s.category,s.name].join(' ').toLowerCase().includes(query));
  const safe=v=>esc(v);
- $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Harga modal / 1.000</th><th>Min</th><th>Max</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+safe(s.service_id)+'</td><td>'+safe(s.category)+'</td><td>'+safe(s.name)+'</td><td>'+money(s.rate)+'</td><td>'+safe(s.min)+'</td><td>'+safe(s.max)+'</td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
+ $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Modal / 1.000</th><th>Min</th><th>Max</th><th>Harga jual member / 1.000</th><th>Aksi</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+safe(s.service_id)+'</td><td>'+safe(s.category)+'</td><td>'+safe(s.name)+'</td><td>'+money(s.rate)+'</td><td>'+safe(s.min)+'</td><td>'+safe(s.max)+'</td><td><input class="supplier-retail-price" type="number" min="1" step="1" inputmode="numeric" placeholder="Isi harga jual" data-retail-price-for="'+safe(s.service_id)+'"></td><td><button type="button" class="import-supplier-service" data-import-supplier="'+safe(s.service_id)+'">Tambah & aktifkan</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
 }
 async function loadSupplierCatalog(){
  $('#supplier-catalog-status').textContent='Menghubungi IndoSMM…';
@@ -116,6 +116,21 @@ async function loadSupplierCatalog(){
  }
 }
 $('#load-supplier-catalog').addEventListener('click',()=>loadSupplierCatalog().catch(e=>toast(e.message)));
+$('#supplier-services-list').addEventListener('click',async e=>{
+ const button=e.target.closest('.import-supplier-service');
+ if(!button)return;
+ const sid=button.dataset.importSupplier;
+ const input=$('#supplier-services-list').querySelector('[data-retail-price-for="'+CSS.escape(sid)+'"]');
+ const rate=Number(input?.value);
+ if(!Number.isSafeInteger(rate)||rate<=0){toast('Isi harga jual member lebih dari Rp0 terlebih dahulu.');input?.focus();return}
+ button.disabled=true;
+ try{
+  const d=await api('/admin/supplier-services/import',{method:'POST',body:JSON.stringify({service_id:sid,rate})});
+  toast(d.message);
+  await loadServices();
+ }catch(x){toast(x.message)}
+ finally{button.disabled=false}
+});
 $('#supplier-service-search').addEventListener('input',renderSupplierCatalog);
 $('#supplier-category-filter').addEventListener('change',renderSupplierCatalog);
 async function loadAdminSettings(){const d=await api('/admin/settings');const s=d.settings||{};$('#setting-account-name').value=s.sea_bank_account_name||'';$('#setting-account-number').value=s.sea_bank_account_number||'';$('#setting-whatsapp').value=s.admin_whatsapp_number||'';$('#admin-email').value=currentUser.email;}
