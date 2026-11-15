@@ -290,32 +290,6 @@ app.patch('/api/admin/deposits/:id/review', requireAuth, requireAdmin, async (re
   } catch (e) { await client.query('ROLLBACK'); res.status(500).json({ error: 'Gagal memproses deposit.' }); }
   finally { client.release(); }
 });
-app.get('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
-  const { rows } = await pool.query('SELECT id,supplier_service_id,platform,name,description,processing_time,supplier_rate,rate,min_qty,max_qty,active,updated_at FROM services ORDER BY platform,name');
-  res.json({ services: rows });
-});
-app.post('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
-  const { platform,name,description='',processing_time='Estimasi mengikuti antrean supplier',supplier_service_id=null,supplier_rate=0,rate,min_qty=100,max_qty=100000 } = req.body || {};
-  if (!platform || !name || !Number.isSafeInteger(Number(rate)) || Number(rate)<0 || !Number.isSafeInteger(Number(supplier_rate)) || Number(supplier_rate)<0 || !Number.isSafeInteger(Number(min_qty)) || Number(min_qty)<1 || !Number.isSafeInteger(Number(max_qty)) || Number(max_qty)<Number(min_qty)) return res.status(400).json({ error: 'Data layanan tidak valid. Periksa harga dan batas minimum/maksimum.' });
-  const { rows } = await pool.query('INSERT INTO services(platform,name,description,processing_time,supplier_service_id,supplier_rate,rate,min_qty,max_qty) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[platform,name,String(description).slice(0,2000),String(processing_time).slice(0,120),supplier_service_id,Number(supplier_rate),Number(rate),Number(min_qty),Number(max_qty)]);
-  await audit(req.session.user.id,'service_created',{service_id:rows[0].id});
-  res.json({ service: rows[0] });
-});
-app.patch('/api/admin/services/:id', requireAuth, requireAdmin, async (req,res) => {
-  const { rate,active,name,description,min_qty,max_qty,processing_time } = req.body || {};
-  if (rate != null && (!Number.isSafeInteger(Number(rate)) || Number(rate)<0)) return res.status(400).json({ error: 'Harga jual harus berupa bilangan bulat Rp0 atau lebih.' });
-  if (min_qty != null && (!Number.isSafeInteger(Number(min_qty)) || Number(min_qty)<1)) return res.status(400).json({ error: 'Minimum pesanan harus bilangan bulat minimal 1.' });
-  if (max_qty != null && (!Number.isSafeInteger(Number(max_qty)) || Number(max_qty)<1)) return res.status(400).json({ error: 'Maksimum pesanan harus bilangan bulat minimal 1.' });
-  const old = await pool.query('SELECT min_qty,max_qty FROM services WHERE id=$1',[req.params.id]);
-  if (!old.rows[0]) return res.status(404).json({ error: 'Layanan tidak ditemukan.' });
-  const nextMin = min_qty == null ? Number(old.rows[0].min_qty) : Number(min_qty);
-  const nextMax = max_qty == null ? Number(old.rows[0].max_qty) : Number(max_qty);
-  if (nextMax < nextMin) return res.status(400).json({ error: 'Maksimum pesanan tidak boleh lebih kecil dari minimum.' });
-  const { rows } = await pool.query('UPDATE services SET rate=COALESCE($1,rate),active=COALESCE($2,active),name=COALESCE($3,name),description=COALESCE($4,description),min_qty=$5,max_qty=$6,processing_time=COALESCE($7,processing_time),updated_at=NOW() WHERE id=$8 RETURNING *',[rate == null ? null : Number(rate),active == null ? null : Boolean(active),name || null,description == null ? null : String(description).slice(0,2000),nextMin,nextMax,processing_time == null ? null : String(processing_time).slice(0,120),req.params.id]);
-  if (!rows[0]) return res.status(404).json({ error: 'Layanan tidak ditemukan.' });
-  await audit(req.session.user.id,'service_updated',{service_id:req.params.id,changes:req.body});
-  res.json({ service: rows[0] });
-});
 app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) => {
   try {
     const result = await supplier.listServices();
