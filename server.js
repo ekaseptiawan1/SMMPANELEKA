@@ -312,6 +312,30 @@ app.get('/api/admin/supplier-services', requireAuth, requireAdmin, async (req,re
     res.json({ services });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
+app.post('/api/admin/supplier-services/import', requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const sid = String(req.body?.service_id || '').trim();
+    const rate = Number(req.body?.rate);
+    if (!sid || !Number.isSafeInteger(rate) || rate <= 0) return res.status(400).json({ error: 'Pilih layanan dan isi harga jual member lebih dari Rp0.' });
+    const result = await supplier.listServices();
+    const list = Array.isArray(result) ? result : (result.services || result.data || []);
+    const item = list.find(x => String(x.service || x.id || x.service_id || '') === sid);
+    if (!item) return res.status(404).json({ error: 'Layanan tidak ditemukan lagi di katalog IndoSMM. Muat ulang daftar layanan.' });
+    const platform = String(item.category || item.platform || 'Other');
+    const name = String(item.name || item.description || ('Service ' + sid));
+    const supplierRate = Math.max(0,Math.round(Number(item.rate ?? item.price ?? 0)));
+    const min = Math.max(1,Number(item.min ?? item.min_qty ?? 1));
+    const max = Math.max(min,Number(item.max ?? item.max_qty ?? min));
+    const saved = await pool.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
+      VALUES($1,$2,$3,$4,$5,$6,$7,true)
+      ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
+      DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
+        rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()
+      RETURNING id`,[sid,platform,name,supplierRate,rate,min,max]);
+    await audit(req.session.user.id,'supplier_service_imported',{service_id:saved.rows[0].id,supplier_service_id:sid});
+    res.json({ message: 'Layanan berhasil ditambahkan dan diaktifkan untuk member.', service_id:saved.rows[0].id });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
 app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) => {
   try {
     const result = await supplier.listServices();
