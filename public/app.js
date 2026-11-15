@@ -34,7 +34,7 @@ function renderSelectedServiceInfo(){
  $('#subscription-username').required=isSubscription;
  $('#subscription-min').required=isSubscription;
  $('#subscription-max').required=isSubscription;
- $('#order-comments').required=type==='custom_comments';
+ $('#order-comments').required=['custom_comments','custom_comments_package'].includes(type);
  $('#order-usernames').required=['mentions','mentions_custom_list'].includes(type);
  $('#poll-answer-number').required=type==='poll';
  $('#single-target').required=!isSubscription&&!isBulk;
