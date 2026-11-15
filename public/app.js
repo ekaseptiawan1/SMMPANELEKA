@@ -96,10 +96,10 @@ function renderSupplierCatalog(){
  const query=($('#supplier-service-search')?.value||'').trim().toLowerCase();
  const category=$('#supplier-category-filter')?.value||'';
  const rows=supplierCatalog.filter(s=>(!category||s.category===category)&&[s.service_id,s.category,s.name].join(' ').toLowerCase().includes(query));
- $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Harga modal / 1.000</th><th>Harga jual otomatis / 1.000</th><th>Min</th><th>Max</th><th>Status</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.service_id)+'</td><td>'+esc(s.category)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.rate)+'</td><td><b>'+money(Math.ceil(Number(s.rate)*1.5))+'</b></td><td>'+esc(s.min)+'</td><td>'+esc(s.max)+'</td><td><span class="status-active">Aktif untuk member</span></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
+ $('#supplier-services-list').innerHTML=rows.length?'<table><thead><tr><th>ID</th><th>Kategori</th><th>Nama layanan</th><th>Harga modal / 1.000</th><th>Harga jual otomatis / 1.000</th><th>Min</th><th>Max</th><th>Status</th></tr></thead><tbody>'+rows.map(s=>'<tr><td>'+esc(s.service_id)+'</td><td>'+esc(s.category)+'</td><td>'+esc(s.name)+'</td><td>'+money(s.rate)+'</td><td><b>'+money(Math.ceil(Number(s.rate)*1.75))+'</b></td><td>'+esc(s.min)+'</td><td>'+esc(s.max)+'</td><td><span class="status-active">Aktif untuk member</span></td></tr>').join('')+'</tbody></table>':'<p class="muted">Tidak ada layanan yang cocok dengan pencarian atau kategori ini.</p>';
 }
 async function loadSupplierCatalog(){
- $('#supplier-catalog-status').textContent='Menghubungi IndoSMM dan menyiapkan semua layanan dengan kenaikan harga 50%…';
+ $('#supplier-catalog-status').textContent='Menghubungi IndoSMM dan menyiapkan semua layanan dengan kenaikan harga 75%…';
  const button=$('#load-supplier-catalog');
  button.disabled=true;
  try{
@@ -110,7 +110,7 @@ async function loadSupplierCatalog(){
   const previous=$('#supplier-category-filter').value;
   $('#supplier-category-filter').innerHTML='<option value="">Semua kategori</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
   if(categories.includes(previous))$('#supplier-category-filter').value=previous;
-  $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan diaktifkan, '+sync.skipped+' dilewati. Harga jual otomatis = modal +50%.';
+  $('#supplier-catalog-status').textContent='Selesai: '+sync.activated+' layanan diaktifkan, '+sync.skipped+' dilewati. Harga jual otomatis = modal +75%.';
   renderSupplierCatalog();
   await loadServices();
   toast('Berhasil menyiapkan '+sync.activated+' layanan. Semua layanan valid sudah aktif untuk member.');
