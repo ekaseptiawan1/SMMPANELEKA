@@ -25,7 +25,7 @@ function renderSelectedServiceInfo(){
  $('#poll-fields').classList.toggle('hidden',type!=='poll');
  $('#subscription-username-label').classList.toggle('hidden',!isSubscription);
  $('#subscription-fields').classList.toggle('hidden',!isSubscription);
- $('#quantity-label').classList.toggle('hidden',!['default','poll'].includes(type)||isBulk);
+ $('#quantity-label').classList.toggle('hidden',!['default','poll'].includes(type));
  $('#single-target-label').classList.toggle('hidden',isSubscription||isBulk);
  $('#bulk-target-label').classList.toggle('hidden',!isBulk);
  $('#subscription-username').required=isSubscription;
@@ -36,6 +36,8 @@ function renderSelectedServiceInfo(){
  $('#poll-answer-number').required=type==='poll';
  $('#single-target').required=!isSubscription&&!isBulk;
  $('#bulk-targets').required=isBulk;
+ qty.required=['default','poll'].includes(type);
+ qty.disabled=!qty.required;
  const bulkButton=document.querySelector('[data-order-mode="bulk"]');
  bulkButton.disabled=Boolean(s&&type!=='default');
  if(s&&type!=='default'&&orderMode==='bulk'){
