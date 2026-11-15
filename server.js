@@ -312,6 +312,44 @@ app.get('/api/admin/supplier-services', requireAuth, requireAdmin, async (req,re
     res.json({ services });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
+app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin, async (req,res) => {
+  let client;
+  try {
+    const result = await supplier.listServices();
+    const list = Array.isArray(result) ? result : (result.services || result.data || []);
+    client = await pool.connect();
+    await client.query('BEGIN');
+    let activated = 0, skipped = 0;
+    for (const item of list) {
+      const sid = String(item.service || item.id || item.service_id || '').trim();
+      const name = String(item.name || item.description || '').trim();
+      const supplierRate = Number(item.rate ?? item.price);
+      const min = Math.max(1, Math.floor(Number(item.min ?? item.min_qty ?? 1)));
+      const max = Math.max(min, Math.floor(Number(item.max ?? item.max_qty ?? min)));
+      if (!sid || !name || !Number.isFinite(supplierRate) || supplierRate <= 0 || !Number.isSafeInteger(min) || !Number.isSafeInteger(max)) {
+        skipped++;
+        continue;
+      }
+      const retailRate = Math.ceil(supplierRate * 1.5);
+      const platform = String(item.category || item.platform || 'Other').trim().slice(0,120) || 'Other';
+      await client.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
+        VALUES($1,$2,$3,$4,$5,$6,$7,true)
+        ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
+        DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
+          rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`,
+        [sid,platform,name,Math.round(supplierRate),retailRate,min,max]);
+      activated++;
+    }
+    await client.query('COMMIT');
+    await audit(req.session.user.id,'supplier_services_auto_activated',{activated,skipped,markup_percent:50});
+    res.json({message:'Sinkronisasi otomatis selesai. Layanan aktif dengan harga jual modal +50%.',total:list.length,activated,skipped,markup_percent:50});
+  } catch (e) {
+    if (client) await client.query('ROLLBACK').catch(()=>{});
+    res.status(502).json({error:e.message || 'Gagal memuat dan mengaktifkan layanan supplier.'});
+  } finally {
+    if (client) client.release();
+  }
+});
 app.post('/api/admin/supplier-services/import', requireAuth, requireAdmin, async (req,res) => {
   try {
     const sid = String(req.body?.service_id || '').trim();
