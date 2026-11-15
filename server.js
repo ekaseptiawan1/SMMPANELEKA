@@ -140,18 +140,19 @@ app.post('/api/orders', requireAuth, async (req,res) => {
     if (type === 'subscriptions') {
       const username = String(input.username || '').trim().replace(/^@/, '');
       const min = Number(input.min), max = Number(input.max);
-      const posts = Number(input.posts || 0), delay = Number(input.delay || 0);
+      const posts = Number(input.posts || 1), delay = Number(input.delay || 0), expiry = String(input.expiry || '').trim();
       if (!/^[A-Za-z0-9._]{1,100}$/.test(username) ||
           !Number.isSafeInteger(min) || !Number.isSafeInteger(max) ||
           min < Number(s.min_qty) || max > Number(s.max_qty) || min > max ||
-          !Number.isSafeInteger(posts) || posts < 0 || posts > 100000 ||
-          !Number.isSafeInteger(delay) || delay < 0 || delay > 86400) {
+          !Number.isSafeInteger(posts) || posts < 1 || posts > 365 ||
+          ![0,5,10,15,30,60,90].includes(delay) ||
+          (expiry && !/^(0[1-9]|[12][0-9]|3[01])\\/(0[1-9]|1[0-2])\\/[0-9]{4}$/.test(expiry))) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Periksa username, batas minimal/maksimal, jumlah posting, dan delay subscription.' });
       }
-      quantity = max;
+      quantity = max * posts;
       target = username;
-      orderData = { username, min, max, posts, old_posts: input.old_posts === true, delay };
+      orderData = { username, min, max, posts, old_posts: input.old_posts === true, delay, expiry };
     } else {
       target = validTarget(input.target);
       if (!target) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Link target wajib diisi dan maksimal 1.000 karakter.' }); }
@@ -167,12 +168,13 @@ app.post('/api/orders', requireAuth, async (req,res) => {
         orderData = { comments: comments.join('\\n') };
       } else if (type === 'mentions') {
         const usernames = String(input.usernames || '').split(/[\\r\\n,]+/).map(x=>x.trim()).filter(Boolean);
-        if (!usernames.length || usernames.length > 10000 || usernames.some(x=>!/^@?[A-Za-z0-9._]{1,100}$/.test(x))) {
+        quantity = Number(input.quantity);
+        if (!usernames.length || usernames.length > 10000 || usernames.some(x=>!/^@?[A-Za-z0-9._]{1,100}$/.test(x)) ||
+            !Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
           await client.query('ROLLBACK');
-          return res.status(400).json({ error: 'Isi username mention yang valid, satu username per baris atau dipisahkan koma.' });
+          return res.status(400).json({ error: 'Isi username mention yang valid dan jumlah sesuai batas layanan.' });
         }
-        quantity = usernames.length;
-        orderData = { usernames: usernames.map(x=>x.replace(/^@/, '')).join(',') };
+        orderData = { usernames: usernames.map(x=>x.replace(/^@/, '')).join('\\n') };
       } else {
         quantity = Number(input.quantity);
         if (!Number.isSafeInteger(quantity) || quantity < Number(s.min_qty) || quantity > Number(s.max_qty)) {
