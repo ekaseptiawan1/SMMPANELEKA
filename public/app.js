@@ -284,13 +284,19 @@ $('#admin-deposits').addEventListener('click',async e=>{const del=e.target.close
 $('#admin-deposits').addEventListener('click',async e=>{const b=e.target.closest('.review-deposit');if(!b)return;const note=b.dataset.action==='reject'?(prompt('Alasan penolakan (opsional):')||'') : '';try{await api(`/admin/deposits/${b.dataset.id}/review`,{method:'PATCH',body:JSON.stringify({action:b.dataset.action,note})});toast(b.dataset.action==='approve'?'Deposit disetujui, saldo member bertambah.':'Deposit ditolak.');await refresh()}catch(x){toast(x.message)}});
 
 function renderAuthRoute(){
- if(currentUser)return;
  const route=location.hash;
  const isLogin=route==='#login';
  const isRegister=route==='#register';
  const isVerify=route==='#verify-email';
- document.body.classList.toggle('auth-view',isLogin||isRegister||isVerify);
- $('#auth-entry').classList.toggle('hidden',!(isLogin||isRegister||isVerify));
+ const isAuthRoute=isLogin||isRegister||isVerify;
+ if(currentUser&&!isAuthRoute)return;
+ document.body.classList.toggle('auth-view',isAuthRoute);
+ if(isAuthRoute){
+  document.body.classList.remove('authenticated','admin-view');
+  $('#dashboard').classList.add('hidden');
+  $('#admin').classList.add('hidden');
+ }
+ $('#auth-entry').classList.toggle('hidden',!isAuthRoute);
  $('#login').classList.toggle('hidden',!isLogin);
  $('#register').classList.toggle('hidden',!isRegister);
  $('#verify-email').classList.toggle('hidden',!isVerify);
