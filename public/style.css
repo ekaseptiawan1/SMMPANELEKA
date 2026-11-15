@@ -133,3 +133,7 @@ body.authenticated #nav-user{display:none!important}
 .order-extra-fields textarea,.order-extra-fields input:not([type=checkbox]),.order-extra-fields select{display:block;width:100%;margin-top:6px;background:#0a1424;border:1px solid var(--line);border-radius:9px;padding:11px;color:var(--text);font:inherit}
 .order-extra-fields .inline-check{display:flex;align-items:center;gap:9px}
 .order-extra-fields .inline-check input{width:auto}
+
+
+/* Status verifikasi email member */
+.verified{display:inline-block;color:#16a34a;font-weight:700}.unverified{display:inline-block;color:#d97706;font-weight:600}
