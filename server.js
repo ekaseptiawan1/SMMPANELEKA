@@ -315,34 +315,54 @@ app.get('/api/admin/supplier-services', requireAuth, requireAdmin, async (req,re
 app.post('/api/admin/supplier-services/activate-all', requireAuth, requireAdmin, async (req,res) => {
   let client;
   try {
+    // Fetch the supplier catalog once, then write in batches instead of 4,000+ individual queries.
     const result = await supplier.listServices();
     const list = Array.isArray(result) ? result : (result.services || result.data || []);
-    client = await pool.connect();
-    await client.query('BEGIN');
-    let activated = 0, skipped = 0;
+    const byId = new Map();
+    let skipped = 0;
+
     for (const item of list) {
       const sid = String(item.service || item.id || item.service_id || '').trim();
       const name = String(item.name || item.description || '').trim();
       const supplierRate = Number(item.rate ?? item.price);
       const min = Math.max(1, Math.floor(Number(item.min ?? item.min_qty ?? 1)));
       const max = Math.max(min, Math.floor(Number(item.max ?? item.max_qty ?? min)));
-      if (!sid || !name || !Number.isFinite(supplierRate) || supplierRate <= 0 || !Number.isSafeInteger(min) || !Number.isSafeInteger(max)) {
+      if (!sid || !name || !Number.isFinite(supplierRate) || supplierRate <= 0 ||
+          !Number.isSafeInteger(min) || !Number.isSafeInteger(max)) {
         skipped++;
         continue;
       }
-      const retailRate = Math.ceil(supplierRate * 1.75);
       const platform = String(item.category || item.platform || 'Other').trim().slice(0,120) || 'Other';
+      byId.set(sid, [
+        sid, platform, name, Math.round(supplierRate),
+        Math.ceil(supplierRate * 1.75), min, max
+      ]);
+    }
+
+    const rows = [...byId.values()];
+    skipped += list.length - skipped - rows.length;
+    client = await pool.connect();
+    await client.query('BEGIN');
+
+    const batchSize = 300;
+    for (let offset = 0; offset < rows.length; offset += batchSize) {
+      const batch = rows.slice(offset, offset + batchSize);
+      const values = [];
+      const placeholders = batch.map((row, index) => {
+        const base = index * 7;
+        values.push(...row);
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},true)`;
+      });
       await client.query(`INSERT INTO services(supplier_service_id,platform,name,supplier_rate,rate,min_qty,max_qty,active)
-        VALUES($1,$2,$3,$4,$5,$6,$7,true)
+        VALUES ${placeholders.join(',')}
         ON CONFLICT (supplier_service_id) WHERE supplier_service_id IS NOT NULL
         DO UPDATE SET supplier_rate=EXCLUDED.supplier_rate,platform=EXCLUDED.platform,name=EXCLUDED.name,
-          rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`,
-        [sid,platform,name,Math.round(supplierRate),retailRate,min,max]);
-      activated++;
+          rate=EXCLUDED.rate,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,active=true,updated_at=NOW()`, values);
     }
+
     await client.query('COMMIT');
-    await audit(req.session.user.id,'supplier_services_auto_activated',{activated,skipped,markup_percent:75});
-    res.json({message:'Sinkronisasi otomatis selesai. Layanan aktif dengan harga jual modal +75%.',total:list.length,activated,skipped,markup_percent:75});
+    await audit(req.session.user.id,'supplier_services_auto_activated',{activated:rows.length,skipped,markup_percent:75});
+    res.json({message:'Sinkronisasi otomatis selesai. Layanan aktif dengan harga jual modal +75%.',total:list.length,activated:rows.length,skipped,markup_percent:75});
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(()=>{});
     res.status(502).json({error:e.message || 'Gagal memuat dan mengaktifkan layanan supplier.'});
