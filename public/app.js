@@ -16,6 +16,30 @@ function orderServiceType(service){
  if(raw.includes('default')||raw.includes('drip'))return 'default';
  return 'unsupported';
 }
+function renderOrderPriceSummary(){
+ const s=catalog.find(x=>String(x.id)===String($('#service-select').value));
+ const quantityEl=$('#order-quantity');
+ const summary=$('#order-price-summary');
+ if(!summary)return;
+ if(!s){summary.classList.add('hidden');return;}
+ const type=orderServiceType(s);
+ let quantity=0;
+ if(type==='package')quantity=1;
+ else if(type==='custom_comments'||type==='custom_comments_package')quantity=String($('#order-comments').value||'').split(/[\\r\\n]+/).filter(x=>x.trim()).length;
+ else if(type==='mentions')quantity=Number(quantityEl.value||0);
+ else if(type==='mentions_custom_list')quantity=String($('#order-usernames').value||'').split(/[\\r\\n,]+/).filter(x=>x.trim()).length;
+ else if(type==='subscriptions')quantity=Number($('#subscription-min').value||0)*Number($('#subscription-posts').value||1);
+ else quantity=Number(quantityEl.value||0);
+ const isPackage=['package','custom_comments_package'].includes(type);
+ let total=isPackage?Math.ceil(Number(s.rate)||0):Math.ceil((Number(s.rate)||0)*quantity/1000);
+ if(orderMode==='bulk'&&type==='default'){
+  const count=String($('#bulk-targets').value||'').split(/[\\r\\n]+/).filter(x=>x.trim()).length;
+  total*=count;
+ }
+ $('#order-price-quantity').textContent=quantity.toLocaleString('id-ID')+(orderMode==='bulk'&&type==='default'?' × link':'');
+ $('#order-price-value').textContent=money(total);
+ summary.classList.remove('hidden');
+}
 function renderSelectedServiceInfo(){
  const s=catalog.find(x=>String(x.id)===String($('#service-select').value));
  const el=$('#selected-service-info'),qty=$('#order-quantity');
@@ -74,6 +98,7 @@ function renderSelectedServiceInfo(){
  const typeLabel={default:'Default',package:'Package',custom_comments:'Custom Comments',custom_comments_package:'Custom Comments Package',mentions:'Mentions',mentions_custom_list:'Mentions Custom List',poll:'Poll',subscriptions:'Subscriptions',unsupported:'Belum didukung'}[type];
  $('#selected-service-description').innerHTML='<b>Deskripsi layanan</b><br>'+esc(s.description||'Deskripsi layanan dari supplier belum tersedia.');
  el.innerHTML='<b>'+esc(s.platform)+' · '+esc(s.name)+'</b><br>Jenis: <b>'+typeLabel+'</b>'+(type==='unsupported'?'<br>Tipe ini belum didukung sehingga tombol pesanan dinonaktifkan.':'')+'<br>Harga: <b>'+money(s.rate)+'</b>'+(['package','custom_comments_package'].includes(type)?' per paket':' per 1.000')+'<br>Jumlah minimal: <b>'+esc(s.min_qty)+'</b> · Maksimal order: <b>'+esc(s.max_qty)+'</b><br>'+(s.delay_enabled?('Delay layanan: '+esc(s.delay_value)+' '+(s.delay_unit==='minutes'?'menit':'detik')+'<br>'):'')+(s.processing_time&& !/mengikuti antrean supplier/i.test(s.processing_time)?'<br>Estimasi proses: '+esc(s.processing_time):'');
+ renderOrderPriceSummary();
 }
 function renderOrderServiceOptions(){const category=$('#service-category').value;const select=$('#service-select');const previous=select.value;const items=catalog.filter(s=>(s.platform||'Lainnya')===category);select.innerHTML='<option value="">Pilih layanan...</option>'+items.map(s=>'<option value="'+s.id+'">'+esc(s.name)+' — '+money(s.rate)+'/1k</option>').join('');select.disabled=!category||!items.length;if(items.some(s=>String(s.id)===previous))select.value=previous;renderSelectedServiceInfo()}
 async function loadServices(){const d=await api('/services');catalog=d.services;$('#services').innerHTML=catalog.length?catalog.map(s=>'<div class="service"><b>'+esc(s.platform)+' — '+esc(s.name)+'</b><p>'+esc(s.description||'Deskripsi layanan belum tersedia.')+'</p><small>'+money(s.rate)+' / 1.000 · Jumlah minimal '+s.min_qty+' · Maksimal order '+s.max_qty+'</small>'+(s.processing_time&& !/mengikuti antrean supplier/i.test(s.processing_time)?'<small>Estimasi proses: '+esc(s.processing_time)+'</small>':'')+'</div>').join(''):'<p class="muted">Katalog belum diisi admin.</p>';const categorySelect=$('#service-category');const previousCategory=categorySelect.value;const categories=[...new Set(catalog.map(s=>s.platform||'Lainnya'))].sort((a,b)=>a.localeCompare(b,'id'));categorySelect.innerHTML='<option value="">Pilih kategori...</option>'+categories.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');if(categories.includes(previousCategory))categorySelect.value=previousCategory;else categorySelect.value='';renderOrderServiceOptions()}
@@ -239,6 +264,7 @@ $('#register').addEventListener('submit',async e=>{e.preventDefault();try{const 
 
 $('#logout-admin').addEventListener('click',async()=>{try{await api('/auth/logout',{method:'POST'});location.reload()}catch(x){toast(x.message)}});
 $('#deposit').addEventListener('submit',async e=>{e.preventDefault();try{const f=Object.fromEntries(new FormData(e.target));f.amount=Number(f.amount);const d=await api('/deposits',{method:'POST',body:JSON.stringify(f)});e.target.reset();if(d.whatsapp_url){toast('Membuka WhatsApp admin…');window.location.assign(d.whatsapp_url);return}toast(d.message);await refresh();showMemberPage('deposit-page')}catch(x){toast(x.message)}});
+['order-quantity','order-comments','order-usernames','subscription-min','subscription-posts','bulk-targets'].forEach(id=>{const el=$('#'+id);if(el)el.addEventListener('input',renderOrderPriceSummary)});
 let orderMode='single';
 document.querySelectorAll('[data-order-mode]').forEach(btn=>btn.addEventListener('click',()=>{if(btn.disabled)return;orderMode=btn.dataset.orderMode;document.querySelectorAll('[data-order-mode]').forEach(x=>x.classList.toggle('active',x===btn));renderSelectedServiceInfo();$('#order-mode-help').textContent=orderMode==='single'?'Pesanan biasa: satu link untuk satu pesanan.':'Pesanan massal: satu layanan dan jumlah yang sama dikirim ke banyak link sekaligus (maksimal 50 link).'}));
 $('#order').addEventListener('submit',async e=>{e.preventDefault();try{const f=new FormData(e.target);const p=Object.fromEntries(f);const selected=catalog.find(x=>String(x.id)===String(p.service_id));const type=orderServiceType(selected);if(type==='subscriptions')p.max=p.min;const bulk=orderMode==='bulk'&&type==='default';
