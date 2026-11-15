@@ -297,6 +297,21 @@ app.post('/api/admin/services', requireAuth, requireAdmin, async (req,res) => {
   await audit(req.session.user.id,'service_created',{service_id:rows[0].id});
   res.json({ service: rows[0] });
 });
+app.get('/api/admin/supplier-services', requireAuth, requireAdmin, async (req,res) => {
+  try {
+    const result = await supplier.listServices();
+    const list = Array.isArray(result) ? result : (result.services || result.data || []);
+    const services = list.map(x => ({
+      service_id: String(x.service || x.id || x.service_id || ''),
+      category: String(x.category || x.platform || 'Other'),
+      name: String(x.name || x.description || ''),
+      rate: Math.max(0,Math.round(Number(x.rate ?? x.price ?? 0))),
+      min: Math.max(1,Number(x.min ?? x.min_qty ?? 1)),
+      max: Math.max(1,Number(x.max ?? x.max_qty ?? 1))
+    })).filter(x => x.service_id && x.name);
+    res.json({ services });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
 app.post('/api/admin/sync-supplier', requireAuth, requireAdmin, async (req,res) => {
   try {
     const result = await supplier.listServices();
